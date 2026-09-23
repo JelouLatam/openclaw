@@ -1,4 +1,6 @@
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+import { buildPersistedUserTurnMetadata } from "../sessions/user-turn-transcript.metadata.js";
+import type { UserTurnInput } from "../sessions/user-turn-transcript.types.js";
 import { BoundedSerialQueue } from "../shared/bounded-serial-queue.js";
 
 /** Transcript row identity shared by persistence and live relay captions. */
@@ -11,14 +13,17 @@ export function buildPersistedVoiceMessage(params: {
   text: string;
   timestamp: number;
   provider: string;
+  sender?: UserTurnInput["sender"];
 }): Record<string, unknown> {
   const provenance = { kind: "realtime_voice", sourceChannel: "talk" };
   if (params.role === "user") {
+    const metadata = buildPersistedUserTurnMetadata({ sender: params.sender }, []);
     return {
       role: "user",
       content: [{ type: "text", text: params.text }],
       timestamp: params.timestamp,
       provenance,
+      ...(Object.keys(metadata).length > 0 ? { __openclaw: metadata } : {}),
     };
   }
   return {

@@ -14,6 +14,7 @@ import {
   onTrustedToolExecutionEvent,
   type TrustedToolExecutionEvent,
 } from "../infra/diagnostic-events.js";
+import type { UserTurnInput } from "../sessions/user-turn-transcript.types.js";
 import { runOpenClawAgentWriteTransaction } from "../state/openclaw-agent-db.js";
 import {
   type ClientVoiceConfirmationUtteranceContext,
@@ -440,6 +441,7 @@ function appendVoiceTranscript(params: {
   timestamp?: number;
   config?: OpenClawConfig;
   confirmation?: ClientVoiceConfirmationUtteranceContext | null;
+  sender?: UserTurnInput["sender"];
 }): Promise<void> {
   // Normalize before admission so the queued task retains only bounded text.
   const normalized = { ...params, text: normalizeVoiceTranscriptText(params.text) };
@@ -513,6 +515,7 @@ function appendVoiceTranscript(params: {
             text: normalized.text,
             timestamp,
             provider: record.provider ?? "realtime",
+            sender: normalized.sender,
           }),
           now: timestamp,
         },

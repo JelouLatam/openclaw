@@ -77,6 +77,7 @@ export function enqueueRelayVoiceTranscript(
             text: normalizedText,
             confirmation: observed?.confirmation ?? null,
             ...(session.voiceConfig ? { config: session.voiceConfig } : {}),
+            ...(session.sender ? { sender: session.sender } : {}),
           });
           return;
         } catch (error) {

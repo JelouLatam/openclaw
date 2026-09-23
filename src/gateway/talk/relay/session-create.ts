@@ -8,7 +8,6 @@ import {
   type RealtimeVoiceAudioClearReason,
   type RealtimeVoiceCloseReason,
 } from "../../../talk/provider-types.js";
-import { createRealtimeVoiceSessionHarness } from "../../../talk/realtime-session-harness.js";
 import { resolveRealtimeVoiceInterruptResponseOnInputAudio } from "../../../talk/realtime-session-policy.js";
 import type { TalkEventInput } from "../../../talk/talk-session-controller.js";
 import {
@@ -25,6 +24,7 @@ import {
   scheduleForcedAgentConsult,
   submitRealtimeAgentConsultWorkingResponse,
 } from "./forced-consults.js";
+import { createTalkRealtimeRelayHarness } from "./harness.js";
 import {
   buildTalkRealtimeRelayIssuePayload as relayIssuePayload,
   createTalkRealtimeRelayIssue as realtimeRelayIssue,
@@ -42,7 +42,6 @@ import {
 import { submitFinalProviderToolResult, suppressedToolResultOptions } from "./provider-results.js";
 import {
   RELAY_SESSION_TTL_MS,
-  RELAY_TRANSCRIPT_ECHO_LOOKBACK_MS,
   adoptRelayProviderToolCallId,
   assertRelaySessionCapacity,
   broadcastToOwner,
@@ -80,27 +79,7 @@ export function createTalkRealtimeRelaySession(
   if (expiresAtMs === undefined) {
     throw new Error("Realtime relay session expiry is outside the supported Date range");
   }
-  const harness = createRealtimeVoiceSessionHarness({
-    talk: {
-      sessionId: relaySessionId,
-      mode: "realtime",
-      transport: "gateway-relay",
-      brain: "agent-consult",
-      provider: params.provider.id,
-      // Keep the pre-harness steering window; other harness consumers use the shared default.
-      maxRecentEvents: 20,
-    },
-    talkPayloads: {
-      turnStarted: () => ({}),
-      turnEnded: (reason) => ({ reason }),
-      inputAudioDelta: (audio) => ({ byteLength: audio.byteLength }),
-      outputAudioStarted: () => ({}),
-      outputAudioDelta: (audio) => ({ byteLength: audio.byteLength }),
-      outputAudioDone: (reason) => ({ reason }),
-    },
-    transcriptLookbackMs: RELAY_TRANSCRIPT_ECHO_LOOKBACK_MS,
-    captureBridgeEvents: false,
-  });
+  const harness = createTalkRealtimeRelayHarness(relaySessionId, params.provider.id);
   const emit = (event: TalkRealtimeRelayEventPayload, talkEvent?: TalkEventInput) =>
     broadcastToOwner(params.context, params.connId, {
       ...event,
@@ -667,6 +646,7 @@ export function createTalkRealtimeRelaySession(
     forcedTerminalProviderResults: new Map(),
     toolResultEpoch: 0,
     ...(params.cfg ? { voiceConfig: params.cfg } : {}),
+    ...(params.sender ? { sender: params.sender } : {}),
     voiceSessionCreated: false,
     voiceTranscriptSeq: 0,
     voiceTranscriptQueue: VOICE_TRANSCRIPT_QUEUE_POLICY.createQueue(),
