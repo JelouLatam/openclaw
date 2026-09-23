@@ -129,8 +129,50 @@ openclaw-sidebar-agent-roster {
   margin: 0;
 }
 
+/* Web Awesome caps the menu with an !important max-height inside its shadow
+   root, so the cap goes through the variable that rule reads. */
 .sidebar-new-session-menu::part(menu) {
-  min-width: 180px;
+  --auto-size-available-height: min(440px, calc(100vh - 112px));
+  width: min(280px, calc(100vw - 24px));
+  overscroll-behavior: contain;
+}
+
+.sidebar-new-session-menu__search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--popover);
+}
+
+.sidebar-new-session-menu__search-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  outline: none;
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--control-ui-text-sm);
+}
+
+.sidebar-new-session-menu__search-input::placeholder {
+  color: var(--muted);
+}
+
+.sidebar-new-session-menu__search-input:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--border));
+  box-shadow: var(--focus-ring);
+}
+
+.sidebar-new-session-menu__empty {
+  margin: 8px 2px 0;
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+  line-height: 18px;
 }
 
 .sidebar-agent-roster__group {
