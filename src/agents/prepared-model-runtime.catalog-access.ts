@@ -56,6 +56,8 @@ import type {
 export const MAX_CONCURRENT_FULL_MODEL_CATALOG_BUILDS = 1;
 const limitFullModelCatalogBuild = pLimit(MAX_CONCURRENT_FULL_MODEL_CATALOG_BUILDS);
 const MODEL_CATALOG_FOREGROUND_WAIT_MS = 5_000;
+// The shared catalog worker cannot keep up with short provider TTLs across many agents.
+export const MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS = 15 * 60_000;
 
 export function createFullModelCatalogAccess(
   params: PreparedModelRuntimeCatalogAccessParams,
@@ -358,7 +360,14 @@ export function createFullModelCatalogAccess(
             {
               source: providerSource(provider),
               credentials: preparedProviderCatalogCredentials(auth, provider, normalizeProvider),
-              ...(!failed && expiresAt !== undefined ? { expiresAt } : {}),
+              ...(!failed && expiresAt !== undefined
+                ? {
+                    expiresAt: Math.max(
+                      expiresAt,
+                      Date.now() + MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS,
+                    ),
+                  }
+                : {}),
               ...(legacyRows.get(provider)?.size ? { legacyRows: legacyRows.get(provider) } : {}),
             },
           ] as const;

@@ -134,6 +134,7 @@ const mocks = vi.hoisted(() => {
       entries: [],
       routeVariants: [],
     })),
+    providerExpiries: new Map<string, number>(),
     resolveProviderPolicySurface: vi.fn<
       typeof import("../plugins/provider-public-artifacts.js").resolveProviderPolicySurface
     >(() => null),
@@ -201,7 +202,7 @@ vi.mock("./prepared-model-catalog-worker.js", () => ({
       return {
         modelCatalog: catalog,
         runtimeModels: new Map(),
-        providerExpiries: new Map(),
+        providerExpiries: new Map(mocks.providerExpiries),
         hookRows: new Map(),
         configuredRuntimeModels: agentFacts.configuredRuntimeModels,
       };
@@ -292,6 +293,8 @@ vi.mock("../logging/subsystem.js", () => ({
 const { getPreparedModelRuntimeSnapshot, refreshPreparedModelRuntimeSnapshots } =
   await import("./prepared-model-runtime.js");
 const { getPreparedModelCatalogSnapshot } = await import("./prepared-model-catalog.js");
+const { MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS } =
+  await import("./prepared-model-runtime.catalog-access.js");
 const { prepareScopedReadOnlyModelCatalog } =
   await import("./prepared-model-runtime.scoped-catalog.js");
 const { resetPreparedModelRuntimeSnapshotsForTest } =
@@ -336,6 +339,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   mocks.modelRegistry.find.mockReset();
   mocks.resolveStaticCatalogModel.mockReturnValue(undefined);
+  mocks.providerExpiries = new Map();
   mocks.resolveProviderPolicySurface.mockReset().mockReturnValue(null);
 });
 
@@ -579,6 +583,29 @@ describe("prepared model runtime Gateway catalog mode", () => {
     expect(mocks.planOpenClawModelsJsonSource).not.toHaveBeenCalled();
     expect(mocks.ensureOpenClawModelsJson).not.toHaveBeenCalled();
   });
+
+  it("does not refresh a provider catalog again within the minimum interval", async () => {
+    mocks.runPreparedModelCatalogWorker.mockImplementation(async () => {
+      mocks.providerExpiries = new Map([["openai", Date.now() - 1]]);
+      return {
+        entries: [{ provider: "openai", id: "gpt-5.5", name: "GPT-5.5" }],
+        routeVariants: [],
+      };
+    });
+    const config = { agents: { defaults: { model: "openai/gpt-5.5" } } };
+    await refresh(config);
+    const snapshot = snapshotFor(config);
+    await snapshot!.loadFullModelCatalog!();
+    const builds = mocks.runPreparedModelCatalogWorker.mock.calls.length;
+    expect(builds).toBeGreaterThan(0);
+
+    for (let read = 0; read < 40; read++) {
+      await snapshot!.loadFullModelCatalog!();
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(mocks.runPreparedModelCatalogWorker).toHaveBeenCalledTimes(builds);
+    expect(MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS).toBeGreaterThanOrEqual(15 * 60_000);
+  }, 60_000);
 
   it("publishes configured turn facts without eagerly building a full catalog", async () => {
     const config = {
