@@ -25,6 +25,7 @@ import {
   renderRecentSession,
   renderSessionTree,
   type SessionListHost,
+  type SessionRowLead,
 } from "./app-sidebar-session-row-render.ts";
 import { renderSidebarSessionSectionHeader } from "./app-sidebar-session-section-header.ts";
 import {
@@ -75,8 +76,9 @@ export function renderSessionSection(params: {
   host: SidebarSessionListHost;
   section: RenderableSessionSection;
   personHeaders: PersonHeaders | undefined;
+  rowLead?: SessionRowLead;
 }) {
-  const { host, section, personHeaders } = params;
+  const { host, section, personHeaders, rowLead } = params;
   // An agent's section has no header, so without rows it would only reserve the group's min-height.
   if (section.id.startsWith("agent:") && section.totalRowCount === 0) {
     return nothing;
@@ -376,7 +378,7 @@ export function renderSessionSection(params: {
                       ${repeat(
                         section.rows,
                         (session) => session.key,
-                        (session) => renderSessionTree({ host, session }),
+                        (session) => renderSessionTree({ host, session, lead: rowLead }),
                       )}
                     </div>`
                   : nothing

@@ -3850,6 +3850,17 @@ export const en: TranslationMap & {
         "{error}. Configure automatic session discovery in Settings > Appearance > Session sources.",
       catalogPaginationFailed: "Session catalog returned a repeated page cursor",
       catalogPageMissingHost: "Session catalog page did not include the requested host",
+      search: {
+        label: "Search agents and sessions",
+        clear: "Clear search",
+        results: "Search results",
+        layout: "Session layout",
+        layoutFlat: "All sessions",
+        layoutGrouped: "Grouped by agent",
+        noSessions: 'No sessions match "{query}"',
+        noResults: 'No agents or sessions match "{query}"',
+        olderSessions: "+{count} from older sessions",
+      },
     },
     welcome: { suggestions: { whatCanYouDo: "What can you do?" } },
     runControls: {

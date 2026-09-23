@@ -37,6 +37,9 @@ export const KEYBOARD_SHORTCUT_COMBOS = {
   zoomIn: { modifiers: [], key: "+" },
   zoomOut: { modifiers: [], key: "-" },
   zoomReset: { modifiers: [], key: "0" },
+  // The sidebar matches the produced "/" itself: a bare key must not take the
+  // physical-key fallback, which would swallow letters on other layouts.
+  sidebarSearch: { modifiers: [], key: "/" },
   // Display-only mouse chords; never keyboard-matched.
   toggleSessionSelect: { modifiers: ["alt"], key: "Click" },
   extendSessionSelect: { modifiers: ["shift"], key: "Click" },

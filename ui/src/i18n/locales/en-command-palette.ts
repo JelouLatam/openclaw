@@ -106,6 +106,7 @@ const enCommandPalette = {
       saveQueuedMessage: "Save queued message",
       toggleSessionSelect: "Select multiple sessions",
       extendSessionSelect: "Extend session selection",
+      searchSessions: "Search agents and sessions",
       zoomIn: "Zoom in",
       zoomOut: "Zoom out",
       zoomReset: "Reset zoom",

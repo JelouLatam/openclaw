@@ -294,6 +294,19 @@ describe("i18n", () => {
     }
   });
 
+  it("keeps the sidebar search copy localized in the Spanish bundle", () => {
+    const checkedKeys = [
+      ...flatten(en).filter((key) => key.startsWith("chat.sidebar.search.")),
+      "shortcutsOverlay.labels.searchSessions",
+    ];
+    expect(checkedKeys.length).toBeGreaterThan(1);
+    for (const key of checkedKeys) {
+      const translated = readTranslationString(es, key);
+      expect(translated, key).not.toBe("");
+      expect(translated, key).not.toBe(readTranslationString(en, key));
+    }
+  });
+
   it("keeps the chat composer attachment action localized in shipped locale bundles", () => {
     const key = "chat.composer.addAttachment";
 

@@ -308,6 +308,18 @@ export const icons = {
     <rect width="16" height="5" x="4" y="15" rx="1.5" />
     <line x1="7" x2="16" y1="7" y2="7" />
     <line x1="7" x2="16" y1="18" y2="18" />`),
+  layoutList: strokeIcon(svg` <rect width="7" height="7" x="3" y="3" rx="1" />
+    <rect width="7" height="7" x="3" y="14" rx="1" />
+    <path d="M14 4h7" />
+    <path d="M14 9h7" />
+    <path d="M14 15h7" />
+    <path d="M14 20h7" />`),
+  list: strokeIcon(svg` <path d="M3 12h.01" />
+    <path d="M3 18h.01" />
+    <path d="M3 6h.01" />
+    <path d="M8 12h13" />
+    <path d="M8 18h13" />
+    <path d="M8 6h13" />`),
   layoutCompact: strokeIcon(svg` <rect width="16" height="3" x="4" y="4" rx="1" />
     <rect width="16" height="3" x="4" y="9" rx="1" />
     <rect width="16" height="3" x="4" y="14" rx="1" />
