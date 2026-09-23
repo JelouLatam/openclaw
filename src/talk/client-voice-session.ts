@@ -14,6 +14,8 @@ import {
   onTrustedToolExecutionEvent,
   type TrustedToolExecutionEvent,
 } from "../infra/diagnostic-events.js";
+import { buildPersistedUserTurnMetadata } from "../sessions/user-turn-transcript.metadata.js";
+import type { UserTurnInput } from "../sessions/user-turn-transcript.types.js";
 import { runOpenClawAgentWriteTransaction } from "../state/openclaw-agent-db.js";
 import {
   type ClientVoiceConfirmationUtteranceContext,
@@ -425,14 +427,18 @@ function buildPersistedVoiceMessage(params: {
   text: string;
   timestamp: number;
   provider: string;
+  sender?: UserTurnInput["sender"];
 }): Record<string, unknown> {
   const provenance = { kind: "realtime_voice", sourceChannel: "talk" };
   if (params.role === "user") {
+    // Without attribution, every viewer renders another person's speech as their own.
+    const metadata = buildPersistedUserTurnMetadata({ sender: params.sender }, []);
     return {
       role: "user",
       content: [{ type: "text", text: params.text }],
       timestamp: params.timestamp,
       provenance,
+      ...(Object.keys(metadata).length > 0 ? { __openclaw: metadata } : {}),
     };
   }
   return {
@@ -463,6 +469,7 @@ function appendVoiceTranscript(params: {
   timestamp?: number;
   config?: OpenClawConfig;
   confirmation?: ClientVoiceConfirmationUtteranceContext | null;
+  sender?: UserTurnInput["sender"];
 }): Promise<void> {
   // Normalize before admission so the queued task retains only bounded text.
   const normalized = { ...params, text: normalizeVoiceTranscriptText(params.text) };
@@ -535,6 +542,7 @@ function appendVoiceTranscript(params: {
             text: normalized.text,
             timestamp,
             provider: record.provider ?? "realtime",
+            sender: normalized.sender,
           }),
           now: timestamp,
         },

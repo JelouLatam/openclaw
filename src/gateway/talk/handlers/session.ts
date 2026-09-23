@@ -22,6 +22,7 @@ import { projectInternalRealtimeVoicePublicConfig } from "../../../talk/provider
 import { resolveConfiguredRealtimeVoiceProvider } from "../../../talk/provider-resolver.js";
 import { resolveSandboxedSessionCreation } from "../../operator-role-policy.js";
 import { ADMIN_SCOPE } from "../../operator-scopes.js";
+import { gatewayClientSenderFields } from "../../server-methods/gateway-client-identity.js";
 import { resolveOperatorSessionCreation } from "../../server-methods/session-creation-provenance.js";
 import type { GatewayRequestHandlers, RespondFn } from "../../server-methods/types.js";
 import { assertValidParams } from "../../server-methods/validation.js";
@@ -366,6 +367,7 @@ export const talkSessionHandlers: GatewayRequestHandlers = {
           connId,
           cfg: runtimeConfig,
           consultAuthority: resolveTalkAgentConsultAuthority(client?.connect?.scopes, client),
+          ...gatewayClientSenderFields(client),
           provider: resolution.provider,
           providerConfig: relayLaunch.providerConfig,
           controlSource,
