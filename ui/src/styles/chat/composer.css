@@ -316,6 +316,8 @@
   --wa-color-text-normal: var(--text);
 
   display: flex;
+  /* The menu is a max-height flex column: shrinking rows would overlap wrapped labels. */
+  flex-shrink: 0;
   align-items: center;
   gap: var(--chat-composer-menu-row-gap);
   width: 100%;
@@ -411,7 +413,9 @@
   line-height: 1.25;
 }
 
-.agent-chat__capability-menu-item[value^="library-"] .agent-chat__capability-menu-label > span {
+.agent-chat__capability-menu-item[value^="library-"] .agent-chat__capability-menu-label > span,
+.agent-chat__capability-menu-toggle .agent-chat__capability-menu-label > span:first-child,
+.agent-chat__capability-menu-toggle .agent-chat__capability-menu-note {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

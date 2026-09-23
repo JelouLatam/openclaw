@@ -11,10 +11,14 @@ const suite = createControlUiE2eSuite({
 });
 
 function skill(index: number) {
-  const name = `Skill ${String(index).padStart(2, "0")}`;
+  const name =
+    index === 1
+      ? "Skill 01 with a name long enough to wrap in a narrow menu"
+      : `Skill ${String(index).padStart(2, "0")}`;
   return {
     name,
-    description: `${name} skill`,
+    description:
+      index === 1 ? "A description long enough to wrap onto a second line" : `${name} skill`,
     source: "test",
     filePath: `/tmp/openclaw-e2e/skills/${name}/SKILL.md`,
     baseDir: `/tmp/openclaw-e2e/skills/${name}`,
@@ -182,7 +186,19 @@ suite.define(() => {
           const menuRect = menu.getBoundingClientRect();
           const backRect = back.getBoundingClientRect();
           const style = getComputedStyle(menu);
+          const rows = [
+            ...node.querySelectorAll<HTMLElement>(
+              '.agent-chat__capability-menu-item:not([value="back"])',
+            ),
+          ]
+            .map((row) => row.getBoundingClientRect())
+            .filter((row) => row.height > 0);
           return {
+            rowOverlap: Math.max(
+              0,
+              ...rows.slice(1).map((row, index) => rows[index]!.bottom - row.top),
+            ),
+            width: menuRect.width,
             backOffset: backRect.top - menuRect.top,
             clientHeight: menu.clientHeight,
             maxHeight: Number.parseFloat(style.maxHeight),
@@ -316,6 +332,8 @@ suite.define(() => {
         expect(layout.overscrollY).toBe("contain");
         expect(layout.backOffset).toBeGreaterThanOrEqual(0);
         expect(layout.backOffset).toBeLessThanOrEqual(1);
+        expect(layout.width, layout.view).toBeCloseTo(272, 0);
+        expect(layout.rowOverlap, layout.view).toBeLessThanOrEqual(0.5);
       }
     });
   });

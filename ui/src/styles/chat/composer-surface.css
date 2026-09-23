@@ -536,10 +536,8 @@
   background: var(--bg-hover);
 }
 
+/* The attach menu is the capability menu; its view rules in composer.css own the width. */
 .agent-chat__attach-menu::part(menu) {
-  width: 176px;
-  min-width: 176px;
-  max-width: min(176px, calc(100vw - 24px));
   padding: var(--menu-padding);
 }
 
