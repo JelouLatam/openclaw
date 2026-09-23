@@ -64,3 +64,58 @@ it("preserves NUL-bearing TEXT, storage classes, and source key order", async ()
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+it("splits an oversized table at row boundaries and restores it from every part", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "git-backup-parts-"));
+  const sourcePath = path.join(root, "source.sqlite");
+  const outputPath = path.join(root, "dump");
+  const targetPath = path.join(root, "restored.sqlite");
+  try {
+    const source = openOpenClawStateDatabase({ path: sourcePath });
+    source.db.exec("CREATE TABLE sample (id INTEGER PRIMARY KEY, value TEXT NOT NULL)");
+    const insert = source.db.prepare("INSERT INTO sample (id, value) VALUES (?, ?)");
+    for (let id = 1; id <= 8; id += 1) {
+      insert.run(id, `${id}:${"x".repeat(20_000)}`);
+    }
+    closeOpenClawStateDatabaseForTest();
+
+    const manifest = await dumpGitBackupDatabase({
+      snapshotPath: sourcePath,
+      outputPath,
+      identity: { role: "global" },
+      tablePartMaxBytes: 64 * 1024,
+    });
+    expect(manifest.tables.sample).toMatchObject({ rows: 8, parts: 3 });
+    const tableFiles = (await fs.readdir(path.join(outputPath, "tables")))
+      .filter((name) => name.startsWith("sample."))
+      .toSorted();
+    expect(tableFiles).toEqual([
+      "sample.jsonl",
+      "sample.part-00001.jsonl",
+      "sample.part-00002.jsonl",
+    ]);
+    for (const name of tableFiles) {
+      const stat = await fs.stat(path.join(outputPath, "tables", name));
+      expect(stat.size).toBeLessThanOrEqual(64 * 1024);
+    }
+
+    const restored = await restoreGitBackupDirectory({
+      sourcePath: outputPath,
+      targetPath,
+      expectedIdentity: { role: "global" },
+    });
+    expect(restored.tables.find((table) => table.table === "sample")).toMatchObject({
+      rows: 8,
+      ok: true,
+    });
+    const database = new DatabaseSync(targetPath, { readOnly: true });
+    try {
+      expect(database.prepare("SELECT count(*) AS rows FROM sample").get()).toEqual({ rows: 8 });
+    } finally {
+      database.close();
+    }
+  } finally {
+    closeOpenClawStateDatabaseForTest();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

@@ -32,7 +32,8 @@ for (let id = 0; id < rowCount; id += 1) {
 }
 database.exec("COMMIT");
 closeOpenClawStateDatabaseForTest();
-const expected = { rows: rowCount, sha256: expectedHash.digest("hex") };
+// 256 MiB of rows exceeds the 64 MiB part limit, so the table is split into five parts.
+const expected = { rows: rowCount, sha256: expectedHash.digest("hex"), parts: 5 };
 const created = await createGitBackup({
   repositoryPath,
   stateDir,
