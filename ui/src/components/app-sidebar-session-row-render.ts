@@ -324,13 +324,16 @@ function renderSidebarSessionIndicators(
   };
 }
 
+export type SessionRowLead = (session: SidebarRecentSession) => unknown;
+
 export function renderRecentSession(params: {
   host: SessionListHost;
   session: SidebarRecentSession;
   display?: CatalogBackingSessionDisplay;
   listItem?: boolean;
+  lead?: SessionRowLead;
 }) {
-  const { host, session, display, listItem = true } = params;
+  const { host, session, display, listItem = true, lead } = params;
   const pinAccess = host.readSessionMutationAccess({
     method: "sessions.patch",
     params: { key: session.key, pinned: !session.pinned },
@@ -456,7 +459,7 @@ export function renderRecentSession(params: {
         aria-describedby=${[stateId, metaId].filter(Boolean).join(" ") || nothing}
         @click=${(event: MouseEvent) => host.handleSessionRowClick(event, session)}
       >
-        ${team ? nothing : persistentIndicator}
+        ${lead ? lead(session) : nothing} ${team ? nothing : persistentIndicator}
         <span class="sidebar-recent-session__text">
           <span class="sidebar-recent-session__title-row"> ${marqueeLabel} </span>
           <span class="sidebar-recent-session__details">
@@ -572,8 +575,10 @@ export function renderSessionTree(params: {
   host: SessionListHost;
   session: SidebarRecentSession;
   listItem?: boolean;
+  /** Leading content for the root row only; child rows keep their indent. */
+  lead?: SessionRowLead;
 }): TemplateResult {
-  const { host, session, listItem = true } = params;
+  const { host, session, listItem = true, lead } = params;
   const expanded = host.isSessionChildrenExpanded(session);
   const visibleChildren = visibleSessionChildren({
     session,
@@ -585,7 +590,7 @@ export function renderSessionTree(params: {
     data-session-tree=${session.key}
     role=${ifDefined(listItem ? "listitem" : undefined)}
   >
-    ${renderRecentSession({ host, session, listItem: false })}
+    ${renderRecentSession({ host, session, listItem: false, lead })}
     ${
       expanded
         ? html`<div class="sidebar-session-tree__children">

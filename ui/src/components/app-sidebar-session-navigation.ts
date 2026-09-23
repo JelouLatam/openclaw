@@ -58,6 +58,7 @@ import {
 } from "./app-sidebar-session-projection.ts";
 import {
   loadStoredHiddenSessionCatalogIds,
+  loadStoredSidebarRosterLayout,
   loadStoredSidebarSessionSortMode,
   loadStoredSidebarSessionStatusFilter,
   loadStoredSidebarSessionsGrouping,
@@ -65,9 +66,11 @@ import {
   loadStoredSidebarSessionsShowPreview,
   loadStoredSidebarSessionsShowSystem,
   resolveSidebarSessionSortMode,
+  storeSidebarRosterLayout,
   storeSidebarSessionSortMode,
   type SidebarEmptyGroupsMode,
   type SidebarRecentSession,
+  type SidebarRosterLayout,
   type SidebarSessionSortMode,
   type SidebarSessionStatusFilter,
 } from "./app-sidebar-session-types.ts";
@@ -94,6 +97,7 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
   }
 
   @state() sessionSortMode: SidebarSessionSortMode = loadStoredSidebarSessionSortMode();
+  @state() rosterLayout: SidebarRosterLayout = loadStoredSidebarRosterLayout();
 
   readonly sessionProjection = new SidebarSessionProjection();
   readonly sessionData = new SessionDataController(this);
@@ -142,6 +146,11 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
 
   setSessionSortMode(mode: SidebarSessionSortMode) {
     this.sessionSortMode = storeSidebarSessionSortMode(mode, this.sessionPeopleSortCapability());
+  }
+
+  setRosterLayout(layout: SidebarRosterLayout) {
+    storeSidebarRosterLayout(layout);
+    this.rosterLayout = layout;
   }
 
   private readonly sessionOwnerFilter = new SessionOwnerFilterController(this, () => this.context);
@@ -417,13 +426,23 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
   ): SidebarVisibleSections {
     const grouping = this.effectiveSessionsGrouping();
     const roster = this.groupedSessionSource;
-    const sections = roster?.agentIds.flatMap((agentId) => {
-      const agentRows = rows.filter((row) => this.sessionNavigationAgentId(row) === agentId);
-      return [true, false].map((pinned) => ({
+    const agentSections = (agentId: string, agentRows: readonly SidebarRecentSession[]) =>
+      [true, false].map((pinned) => ({
         id: `agent:${agentId}:${pinned ? "pinned" : "recent"}` as const,
         rows: agentRows.filter((row) => row.pinned === pinned),
       }));
-    });
+    // The flat layout is one "*" agent: its sections keep the per-agent
+    // contract (headerless, derived, roster-owned paging) across all agents.
+    const sections = !roster
+      ? undefined
+      : this.rosterLayout === "flat"
+        ? agentSections("*", rows)
+        : roster.agentIds.flatMap((agentId) =>
+            agentSections(
+              agentId,
+              rows.filter((row) => this.sessionNavigationAgentId(row) === agentId),
+            ),
+          );
     const collapsedSections = new Set(this.collapsedSessionSections);
     for (const agentId of roster?.collapsedAgentIds ?? []) {
       collapsedSections.add(`agent:${agentId}:pinned`);

@@ -42,6 +42,7 @@ import type {
   SidebarSessionCatalog,
 } from "./app-sidebar-session-catalogs.ts";
 import { renderSessionList } from "./app-sidebar-session-list-render.ts";
+import "./app-sidebar-session-search.ts";
 import type {
   SidebarNarrationSyncInput,
   SidebarSessionNarrationController,
@@ -78,6 +79,7 @@ import { SidebarPeopleController } from "./sidebar-people-controller.ts";
 
 class AppSidebar extends AppSidebarSessionNavigationElement implements SessionListHost {
   @state() teamOnlineExpanded = false;
+  @state() sessionSearchQuery = "";
   @state() override sidebarNarrationLines: ReadonlyMap<string, string> = new Map();
   @state() override sidebarObserverDigests: ReadonlyMap<string, SessionObserverDigest> = new Map();
 
@@ -542,15 +544,41 @@ class AppSidebar extends AppSidebarSessionNavigationElement implements SessionLi
     return renderSessionTree({ host: this, session, listItem: false });
   }
 
+  private readonly setSessionSearchQuery = (query: string) => {
+    this.sessionSearchQuery = query;
+  };
+
   private renderSessions() {
+    const navigationState = this.getSessionNavigationState();
+    // The list stays mounted under a query: the roster publishes the rows search reads.
     return renderPluginSurface(
       "session-list",
       {
         sessionKey: this.sessionKey,
-        agentId: this.getSessionNavigationState().selectedAgentId,
+        agentId: navigationState.selectedAgentId,
         sessions: this.context?.sessions.state.result?.sessions ?? [],
       },
-      this.renderSessionsBody(),
+      html`<openclaw-sidebar-session-search
+          .host=${this}
+          .query=${this.sessionSearchQuery}
+          .onQueryChange=${this.setSessionSearchQuery}
+          .active=${this.navigationVisible}
+          .agentsMode=${this.sidebarAgentsMode}
+          .layout=${this.rosterLayout}
+          .rows=${this.selectedAgentSessionRows(navigationState)}
+          .toSidebarSession=${navigationState.toSidebarSession}
+          .scope=${{
+            statusFilter: this.sessionsStatusFilter,
+            showCron: this.sessionsShowCron,
+            showSystem: this.sessionsShowSystem,
+            involvingMe: this.sessionInvolvingMeFilterActive,
+            ownerId: this.activeSessionOwnerId,
+          }}
+          .showPreview=${this.sessionsShowPreview}
+        ></openclaw-sidebar-session-search>
+        <div class="sidebar-session-list-body" ?hidden=${this.sessionSearchQuery.trim() !== ""}>
+          ${this.renderSessionsBody()}
+        </div>`,
     );
   }
 

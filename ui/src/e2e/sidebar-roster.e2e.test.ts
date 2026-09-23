@@ -96,6 +96,7 @@ suite.define(() => {
             "openclaw:control-ui:community-invite",
             JSON.stringify({ dismissedAtMs: Date.now() }),
           );
+          localStorage.setItem("openclaw:sidebar:sessions:roster-layout", "grouped");
         });
         const gateway = await installMockGateway(page, {
           sessions: sessions.sessions,

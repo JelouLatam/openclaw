@@ -60,6 +60,7 @@ const KEYBOARD_SHORTCUT_SECTIONS = [
     keyboardShortcutEntry("reviewPanel", KEYBOARD_SHORTCUT_COMBOS.reviewPanel),
   ]),
   keyboardShortcutSection("sidebar", [
+    keyboardShortcutEntry("searchSessions", KEYBOARD_SHORTCUT_COMBOS.sidebarSearch),
     keyboardShortcutEntry("toggleSessionSelect", KEYBOARD_SHORTCUT_COMBOS.toggleSessionSelect),
     keyboardShortcutEntry("extendSessionSelect", KEYBOARD_SHORTCUT_COMBOS.extendSessionSelect),
   ]),

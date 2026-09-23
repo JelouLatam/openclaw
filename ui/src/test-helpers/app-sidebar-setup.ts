@@ -52,6 +52,9 @@ export function setupSidebarTest() {
     // Coding defaults to compact; most cases assert expanded contents, so start
     // expanded. Collapse tests override this value.
     localStorage.setItem("openclaw:sidebar:sessions:collapsed-sections", JSON.stringify([]));
+    // The all-agents workspace defaults to its flat list; these cases assert
+    // the grouped roster.
+    localStorage.setItem("openclaw:sidebar:sessions:roster-layout", "grouped");
   });
 
   afterEach(async () => {
