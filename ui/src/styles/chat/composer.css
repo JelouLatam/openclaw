@@ -404,7 +404,9 @@
   line-height: 1.25;
 }
 
-.agent-chat__capability-menu-item[value^="library-"] .agent-chat__capability-menu-label > span {
+.agent-chat__capability-menu-item[value^="library-"] .agent-chat__capability-menu-label > span,
+.agent-chat__capability-menu-toggle .agent-chat__capability-menu-label > span:first-child,
+.agent-chat__capability-menu-toggle .agent-chat__capability-menu-note {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
