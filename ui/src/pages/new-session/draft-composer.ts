@@ -98,6 +98,14 @@ export function renderNewSessionDraftComposer(
     : (options.context?.gateway.snapshot.client ?? null);
   const gateway = options.context?.gateway;
   const mentionDirectory = resolveNewSessionMentionDirectory(options);
+  const agentsList = options.context?.agents.state.agentsList;
+  const mentionAgents =
+    commandClient &&
+    gateway?.snapshot.phase === "connected" &&
+    agentsList &&
+    !options.isCatalogTarget
+      ? { agents: agentsList.agents, currentAgentId: options.agentId }
+      : undefined;
   options.textareaController.syncSkillCommandOwner(
     commandClient,
     options.agentId,
@@ -126,6 +134,7 @@ export function renderNewSessionDraftComposer(
       return options.message;
     },
     mentionDirectory,
+    mentionAgents,
     modelControl: options.isCatalogTarget
       ? nothing
       : options.modelControl.render({
