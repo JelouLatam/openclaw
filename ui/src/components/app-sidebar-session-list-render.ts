@@ -76,6 +76,10 @@ export function renderSessionSection(params: {
   personHeaders: PersonHeaders | undefined;
 }) {
   const { host, section, personHeaders } = params;
+  // An agent's section has no header, so without rows it would only reserve the group's min-height.
+  if (section.id.startsWith("agent:") && section.totalRowCount === 0) {
+    return nothing;
+  }
   const totalRowCount = section.totalRowCount;
   const group = section.category;
   const personOwner = section.personOwner;
