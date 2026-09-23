@@ -23,6 +23,9 @@ const enAgentsHome = {
     disconnected: "Connect to the Gateway to see your agents.",
     loadFailed: "Could not load agents. Try again.",
     empty: "Your team starts here. Add an agent to get started.",
+    searchAgents: "Search agents…",
+    searchAgentsLabel: "Search agents to start a conversation",
+    noMatchingAgents: "No matching agents",
   },
 } satisfies TranslationMap;
 

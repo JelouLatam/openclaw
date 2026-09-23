@@ -21,6 +21,11 @@ import { icons } from "./icons.ts";
 import { renderAgentIdentityAvatar } from "./identity-avatar-view.ts";
 import { renderNewSessionLink } from "./new-session-link.ts";
 import { renderTeamSessionSlots } from "./session-attention-presentation.ts";
+import {
+  filterAgentsBySearch,
+  focusAgentSearch,
+  renderAgentSearch,
+} from "./sidebar-new-session-search.ts";
 import "../styles/sidebar-agent-roster.css";
 
 registerAgentsHomeEnglish();
@@ -260,16 +265,24 @@ customElements.define("openclaw-sidebar-agent-roster", SidebarAgentRoster);
 class SidebarNewSessionMenu extends AgentRosterElement {
   @property({ attribute: false }) host!: RosterHost;
   @property({ attribute: false }) triggerClass = "";
+  @state() private searchQuery = "";
 
   override render() {
     return this.avatars.withActiveRoutes(() => {
       const access = this.host.readNewSessionAccess();
       const cards = this.cards();
+      // Filtered-out items are disabled as well as hidden: Web Awesome's arrow keys
+      // and typeahead skip only disabled items.
+      const matches = new Set(filterAgentsBySearch(cards, this.searchQuery));
       return html`<wa-dropdown
         class="sidebar-new-session-menu"
         placement="bottom-end"
         aria-label=${t("agentChip.agents")}
-        @wa-show=${() => this.host.dismissTransientMenus()}
+        @wa-show=${() => {
+          this.searchQuery = "";
+          this.host.dismissTransientMenus();
+        }}
+        @wa-after-show=${() => focusAgentSearch(this)}
         @wa-select=${(event: CustomEvent<{ item: HTMLElement & { value?: string } }>) => {
           const item = event.detail.item;
           event.preventDefault();
@@ -297,9 +310,16 @@ class SidebarNewSessionMenu extends AgentRosterElement {
         >
           ${icons.plus}
         </button>
+        ${renderAgentSearch({
+          query: this.searchQuery,
+          noMatches: cards.length > 0 && matches.size === 0,
+          onQueryChange: (query) => (this.searchQuery = query),
+        })}
         ${cards.map(
           (card) => html`<wa-dropdown-item
             value=${card.id}
+            ?hidden=${!matches.has(card)}
+            ?disabled=${!matches.has(card)}
             @click=${(event: MouseEvent) => {
               if (shouldHandleNavigationClick(event)) {
                 event.preventDefault();
