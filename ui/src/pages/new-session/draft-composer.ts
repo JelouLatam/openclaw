@@ -131,6 +131,14 @@ export function renderNewSessionDraftComposer(options: {
           },
         }
       : undefined;
+  const agentsList = options.context?.agents.state.agentsList;
+  const mentionAgents =
+    commandClient &&
+    gateway?.snapshot.phase === "connected" &&
+    agentsList &&
+    !options.isCatalogTarget
+      ? { agents: agentsList.agents, currentAgentId: options.agentId }
+      : undefined;
   options.textareaController.syncSkillCommandOwner(
     commandClient,
     options.agentId,
@@ -155,6 +163,7 @@ export function renderNewSessionDraftComposer(options: {
     mentions: options.mentions,
     getMentions: options.getMentions,
     mentionDirectory,
+    mentionAgents,
     visibility: options.visibility,
     draftAvailable: options.draftAvailable,
     capabilityMenu: options.capabilityMenu,

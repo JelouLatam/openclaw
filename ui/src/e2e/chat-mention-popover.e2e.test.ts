@@ -99,4 +99,72 @@ suite.define(() => {
       });
     },
   );
+
+  it.each(["chat", "new"] as const)(
+    "offers the other agents above people in %s and inserts plain @id text",
+    async (route) => {
+      await suite.withPage({ viewport: { width: 1440, height: 900 } }, async ({ page }) => {
+        const robin = {
+          profileId: "00000001-1111-4111-8111-000000000101",
+          displayName: "Robin",
+          online: true,
+        };
+        const gateway = await installMockGateway(page, {
+          presenceUsers: [
+            {
+              self: true,
+              id: "demo-viewer",
+              identity: { type: "profile", id: "demo-viewer" },
+              name: "Demo viewer",
+            },
+          ],
+          methodResponses: {
+            "users.mentionable": { users: [robin], truncated: false },
+            "agents.list": {
+              defaultId: "main",
+              mainKey: "main",
+              scope: "per-sender",
+              agents: [
+                { id: "main", name: "Main" },
+                { id: "research", name: "Research" },
+                { id: "writer", name: "Release Writer" },
+              ],
+            },
+          },
+        });
+        await page.goto(
+          route === "new"
+            ? `${suite.server.baseUrl}new`
+            : controlUiSessionUrl(suite.server.baseUrl, "agent:main:main"),
+        );
+        await waitForGatewayRecoveryScope(page);
+        const textarea = page.locator(
+          route === "new"
+            ? ".new-session-page__message"
+            : ".agent-chat__composer-combobox textarea",
+        );
+        await textarea.pressSequentially("Ask @");
+        await gateway.waitForRequest("users.mentionable");
+        const menu = page.getByRole("listbox", { name: "Mention an agent or person" });
+        const options = menu.getByRole("option");
+        await expect.poll(() => options.count()).toBe(3);
+        expect(await options.allTextContents()).toEqual([
+          expect.stringContaining("Research"),
+          expect.stringContaining("Release Writer"),
+          expect.stringContaining("Robin"),
+        ]);
+        expect(await menu.textContent()).not.toContain("@main");
+
+        await textarea.pressSequentially("wr");
+        await expect.poll(() => options.first().textContent()).toContain("@writer");
+        await textarea.press("Enter");
+        await expect.poll(() => textarea.inputValue()).toBe("Ask @writer ");
+        await expect.poll(() => menu.count()).toBe(0);
+        expect(await page.locator(".chat-reply-preview").count()).toBe(0);
+        expect(
+          await textarea.evaluate((element: HTMLTextAreaElement) => element.selectionStart),
+        ).toBe("Ask @writer ".length);
+      });
+    },
+  );
 });

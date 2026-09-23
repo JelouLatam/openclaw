@@ -165,6 +165,8 @@ The picker includes known Gateway profiles eligible to read the session, includi
 
 Mentions work for ordinary messages, queued or steered input, and the first message of a new session, including a remotely placed session. They are unavailable in incognito, Goal, catalog, suggestion-only, command-send, or terminal-launch modes. If selected mentions remain after switching to an unsupported mode, the composer blocks the send. It asks you to remove them, or to return to a normal chat. It does not silently discard selected recipients.
 
+The same picker lists the other agents in your agent list above people. It matches agent IDs and names without regard to case or accents, and shows at most eight agents with a count of the rest. Selecting an agent inserts `@<agentId>` as plain text. It notifies no one, adds no recipient, and does not count toward the ten-mention limit, so it also works without a signed-in profile and in incognito chats. The current agent reads it like any other text; whether it acts on it, for example by delegating to that agent, depends on its instructions and tool permissions. Agent suggestions are unavailable in Goal, catalog, and terminal-launch modes.
+
 <a id="temporary-mentions-inbox" />
 
 ## Mentions Inbox

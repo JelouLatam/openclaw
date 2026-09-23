@@ -158,6 +158,9 @@ export function renderChatComposer(props: ChatComposerProps) {
   state.mentionMenu.syncDirectory(
     props.connected && canCompose && !mentionsUnsupported ? props.mentionDirectory : undefined,
   );
+  state.mentionMenu.syncAgents(
+    props.connected && canCompose && !goalComposer.active ? props.mentionAgents : undefined,
+  );
   const getMentions = () => props.getMentions?.() ?? props.mentions ?? [];
   const mentionError =
     getMentions().length > 0 && (mentionsUnsupported || visibleDraft.trimStart().startsWith("/"))

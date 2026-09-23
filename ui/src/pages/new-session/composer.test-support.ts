@@ -15,6 +15,7 @@ const textareaControllers: NewSessionComposerTextareaController[] = [];
 export function composerContext(snapshot: { client: GatewayBrowserClient | null }) {
   return {
     gateway: { snapshot },
+    agents: { state: { agentsList: null } },
     config: { current: {} },
     sessions: { state: { result: null } },
     theme: {

@@ -363,6 +363,7 @@ export class ChatPane extends ChatPaneLayoutRender {
         sessionDisabledBanner ?? placementComposer.disabledBanner ?? modelUnavailableBanner,
     };
     const selfProfileId = selfUser?.identity?.type === "profile" ? selfUser.identity.id : null;
+    const agentsList = this.context.agents.state.agentsList;
     const mentionsUnsupported = Boolean(
       catalogKey || suggestionViewer || selectedSession?.incognito || !selfProfileId,
     );
@@ -454,6 +455,8 @@ export class ChatPane extends ChatPaneLayoutRender {
               params: { sessionKey: state.sessionKey, agentId: currentAgentId },
             }
           : undefined,
+      mentionAgents:
+        agentsList && !catalogKey ? { agents: agentsList.agents, currentAgentId } : undefined,
       modelCatalog: state.chatModelCatalog,
       modelSwitching: Boolean(state.chatModelSwitchPromises[state.sessionKey]),
       queue: state.chatQueue,
