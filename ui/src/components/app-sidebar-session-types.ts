@@ -260,6 +260,8 @@ export type SidebarSessionGroupMenuState = {
 };
 
 export type SidebarSessionSortMode = "created" | "updated" | "people";
+/** All-agents workspace: one flat session list, or the roster grouped by agent. */
+export type SidebarRosterLayout = "flat" | "grouped";
 export type SidebarSessionStatusFilter = "active" | "archived" | "all";
 export type SidebarEmptyGroupsMode = "filtering" | "always" | "never";
 export type SidebarSessionOwnerFilter = {
@@ -336,6 +338,7 @@ const SIDEBAR_SESSION_SHOW_CRON_STORAGE_KEY = "openclaw:sidebar:sessions:show-cr
 const SIDEBAR_SESSION_SHOW_SYSTEM_STORAGE_KEY = "openclaw:sidebar:sessions:show-system";
 const SIDEBAR_SESSION_STATUS_FILTER_STORAGE_KEY = "openclaw:sidebar:sessions:status-filter";
 const SIDEBAR_SESSION_SORT_MODE_STORAGE_KEY = "openclaw:sidebar:sessions:sort-mode";
+const SIDEBAR_ROSTER_LAYOUT_STORAGE_KEY = "openclaw:sidebar:sessions:roster-layout";
 const SIDEBAR_SESSION_COLLAPSED_SECTIONS_STORAGE_KEY =
   "openclaw:sidebar:sessions:collapsed-sections";
 const SIDEBAR_HIDDEN_SESSION_CATALOGS_STORAGE_KEY = "openclaw:sidebar:sessions:hidden-catalogs";
@@ -484,6 +487,24 @@ export function storeSidebarSessionOwnerFilter(
     }
   } catch {
     // Keep the in-memory filter when persistence is unavailable.
+  }
+}
+
+export function loadStoredSidebarRosterLayout(): SidebarRosterLayout {
+  try {
+    return getSafeLocalStorage()?.getItem(SIDEBAR_ROSTER_LAYOUT_STORAGE_KEY) === "grouped"
+      ? "grouped"
+      : "flat";
+  } catch {
+    return "flat";
+  }
+}
+
+export function storeSidebarRosterLayout(layout: SidebarRosterLayout): void {
+  try {
+    getSafeLocalStorage()?.setItem(SIDEBAR_ROSTER_LAYOUT_STORAGE_KEY, layout);
+  } catch {
+    // Keep the in-memory layout when persistence is unavailable.
   }
 }
 

@@ -62,6 +62,7 @@ import {
 } from "./app-sidebar-session-projection.ts";
 import {
   loadStoredHiddenSessionCatalogIds,
+  loadStoredSidebarRosterLayout,
   loadStoredSidebarSessionSortMode,
   loadStoredSidebarSessionStatusFilter,
   loadStoredSidebarSessionsGrouping,
@@ -69,9 +70,11 @@ import {
   loadStoredSidebarSessionsShowPreview,
   loadStoredSidebarSessionsShowSystem,
   resolveSidebarSessionSortMode,
+  storeSidebarRosterLayout,
   storeSidebarSessionSortMode,
   type SidebarEmptyGroupsMode,
   type SidebarRecentSession,
+  type SidebarRosterLayout,
   type SidebarSessionSortMode,
   type SidebarSessionStatusFilter,
 } from "./app-sidebar-session-types.ts";
@@ -98,6 +101,7 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
   }
 
   @state() sessionSortMode: SidebarSessionSortMode = loadStoredSidebarSessionSortMode();
+  @state() rosterLayout: SidebarRosterLayout = loadStoredSidebarRosterLayout();
 
   readonly sessionProjection = new SidebarSessionProjection();
   readonly sessionData = new SessionDataController(this);
@@ -146,6 +150,11 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
 
   setSessionSortMode(mode: SidebarSessionSortMode) {
     this.sessionSortMode = storeSidebarSessionSortMode(mode, this.sessionPeopleSortCapability());
+  }
+
+  setRosterLayout(layout: SidebarRosterLayout) {
+    storeSidebarRosterLayout(layout);
+    this.rosterLayout = layout;
   }
 
   private readonly sessionOwnerFilter = new SessionOwnerFilterController(this, () => this.context);
@@ -426,10 +435,17 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
   ): SidebarVisibleSections {
     const grouping = this.effectiveSessionsGrouping();
     const roster = this.groupedSessionSource;
-    const sections = roster?.agentIds.map((agentId) => ({
-      id: `agent:${agentId}:recent` as const,
-      rows: rows.filter((row) => !row.pinned && this.sessionNavigationAgentId(row) === agentId),
-    }));
+    // Pinned sessions remain in Pages; the flat roster shares one recent section.
+    const sections = !roster
+      ? undefined
+      : this.rosterLayout === "flat"
+        ? [{ id: "agent:*:recent" as const, rows: rows.filter((row) => !row.pinned) }]
+        : roster.agentIds.map((agentId) => ({
+            id: `agent:${agentId}:recent` as const,
+            rows: rows.filter(
+              (row) => !row.pinned && this.sessionNavigationAgentId(row) === agentId,
+            ),
+          }));
     const collapsedSections = new Set(this.collapsedSessionSections);
     for (const agentId of roster?.collapsedAgentIds ?? []) {
       collapsedSections.add(`agent:${agentId}:recent`);

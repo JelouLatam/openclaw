@@ -19,7 +19,7 @@ import {
   renderSessionTree,
   type SessionListHost,
 } from "./app-sidebar-session-row-render.ts";
-import type { SidebarRecentSession } from "./app-sidebar-session-types.ts";
+import type { SidebarRecentSession, SidebarRosterLayout } from "./app-sidebar-session-types.ts";
 import { icons } from "./icons.ts";
 import { renderAgentIdentityAvatar } from "./identity-avatar-view.ts";
 import { renderNewSessionLink } from "./new-session-link.ts";
@@ -32,13 +32,19 @@ import {
 import "../styles/sidebar-agent-roster.css";
 
 registerAgentsHomeEnglish();
-type RosterHost = AppSidebarRenderHost & SessionListHost;
+type RosterHost = AppSidebarRenderHost &
+  SessionListHost & {
+    loadMoreSidebarSessions(): Promise<void>;
+    readonly rosterLayout: SidebarRosterLayout;
+  };
+type RosterAvatarCard = Parameters<typeof renderAgentIdentityAvatar>[0] & { name: string };
 
 class SidebarAgentRoster extends AgentRosterElement {
   @property({ attribute: false }) host!: RosterHost;
   @property({ attribute: false }) sections: SidebarVisibleSections["sections"] = [];
   @property({ attribute: false }) involvingMe = false;
   @property({ attribute: false }) empty = false;
+  @property({ attribute: false }) layout: SidebarRosterLayout = "grouped";
   @state() private collapsed = new Set<string>();
   private settingsScope: string | null = null;
   private published: {
@@ -91,10 +97,60 @@ class SidebarAgentRoster extends AgentRosterElement {
     this.collapsed = collapsed;
   }
 
+  private renderFlat(cards: readonly RosterAvatarCard[], error: string | null) {
+    const cardsById = new Map(cards.map((card) => [card.id, card]));
+    const rowCount = this.sections.reduce((count, section) => count + section.totalRowCount, 0);
+    const agentLead = (session: SidebarRecentSession) => {
+      const card = cardsById.get(session.agentId ?? "");
+      return card
+        ? html`<span class="sidebar-recent-session__agent" title=${card.name}
+            >${renderAgentIdentityAvatar(card)}</span
+          >`
+        : nothing;
+    };
+    return renderSessionListFrame(
+      this.host,
+      html`<div class="sidebar-agent-roster sidebar-agent-roster--flat">
+        ${error ? html`<button class="sidebar-agent-roster__link" @click=${() => void this.refresh()}>${t("agentsHome.loadFailed")}</button>` : nothing}
+        ${
+          rowCount === 0 && this.roster.loading
+            ? html`<span
+                role="status"
+                aria-label=${t("common.loading")}
+                class="skeleton skeleton-line"
+              ></span>`
+            : nothing
+        }
+        ${this.sections.map((section) =>
+          renderSessionSection({
+            host: this.host,
+            section,
+            personHeaders: undefined,
+            rowLead: agentLead,
+          }),
+        )}
+        ${
+          rowCount === 0 && !this.roster.loading && !error && this.roster.result
+            ? html`<span class="sidebar-session-empty-hint"
+                >${t(
+                  this.host.sessionsStatusFilter === "archived"
+                    ? "sessionsView.noArchivedSessions"
+                    : "sessionsView.noSessions",
+                )}</span
+              >`
+            : nothing
+        }
+      </div>`,
+    );
+  }
+
   override render() {
     return this.avatars.withActiveRoutes(() => {
       const cards = this.cards();
       const error = this.roster.error ?? this.roster.subscriptionError;
+      if (this.layout === "flat") {
+        return this.renderFlat(cards, error);
+      }
       const newSessionAccess = this.host.readNewSessionAccess();
       return renderSessionListFrame(
         this.host,
@@ -391,5 +447,6 @@ export function renderSidebarAgentRoster(
     .sections=${sections}
     .empty=${empty}
     .involvingMe=${host.sessionInvolvingMeFilterActive}
+    .layout=${host.rosterLayout}
   ></openclaw-sidebar-agent-roster>`;
 }

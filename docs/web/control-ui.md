@@ -205,8 +205,12 @@ default. The top row becomes a workspace header with the configured Gateway disp
 name, or **OpenClaw**, and the OpenClaw mark. Its menu contains **Show one agent**,
 **Agent settings**, and the existing documentation, help, community, and changelog
 links. Pinned sessions stay in **Pages**, using their agent's avatar as the icon.
-Other sessions appear under collapsible agent headers in configured roster order,
-which stays stable as activity changes. **Home** disappears from Pages: click an agent header's avatar or name to
+Other sessions appear as one list, each row led by its agent's avatar. Choose
+**Grouped by agent** beside the sidebar search box to show them under collapsible
+agent headers in configured roster order, which stays stable as activity changes;
+the browser remembers that choice. See
+[Search agents and sessions](/web/control-ui/sessions-and-sidebar#search-agents-and-sessions).
+**Home** disappears from Pages: click an agent header's avatar or name to
 open that agent's main chat. The separate collapse control only folds its sessions.
 The top **+**, labeled **New conversation**, opens an agent menu with avatars and names in
 the same order as the groups; choosing an agent opens New session for that agent.
@@ -249,7 +253,7 @@ one refresh, so opening **Agents** while team mode is visible does not duplicate
 stops when neither roster is visible. Each refresh reads at most 300 sessions
 across agents, loading pinned sessions first and then the most recent sessions.
 Pinned sessions count toward that limit; sessions outside the window do not appear
-in the grouped sidebar or contribute to activity summaries, except that the open
+in the team-mode sidebar or contribute to activity summaries, except that the open
 conversation remains visible so direct links keep a selected row. When a main session
 is absent from the window, its agent's most recent session supplies the preview.
 

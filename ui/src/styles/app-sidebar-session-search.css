@@ -1,0 +1,231 @@
+openclaw-sidebar-session-search {
+  display: block;
+}
+
+/* Rows below reach the shell edge through a negative inset; the box starts
+   there too and keeps the list's right clearance for classic scrollbars. */
+.sidebar-session-search {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: var(--sidebar-group-gap);
+  padding-inline-end: 8px;
+}
+
+.sidebar-session-search__bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-session-search__box {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.sidebar-session-search__icon {
+  position: absolute;
+  inset-inline-start: 10px;
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  pointer-events: none;
+}
+
+.sidebar-session-search__icon svg,
+.sidebar-session-search__clear svg,
+.sidebar-session-search__layout-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.sidebar-session-search__input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding-block: 0;
+  padding-inline: 32px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(12.5px * var(--control-ui-text-scale));
+  outline: none;
+  transition:
+    border-color var(--duration-fast) ease,
+    background var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease;
+}
+
+.sidebar-session-search__input::placeholder {
+  color: color-mix(in srgb, var(--muted) 82%, transparent);
+}
+
+.sidebar-session-search__input:focus {
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--border));
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  box-shadow: var(--focus-ring);
+}
+
+.sidebar-session-search__clear,
+.sidebar-session-search__layout-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+}
+
+.sidebar-session-search__clear {
+  position: absolute;
+  inset-inline-end: 4px;
+  width: 24px;
+  height: 24px;
+}
+
+.sidebar-session-search__clear:hover,
+.sidebar-session-search__layout-button:hover {
+  background: color-mix(in srgb, var(--bg-hover) 84%, transparent);
+  color: var(--text);
+}
+
+.sidebar-session-search__clear:focus-visible,
+.sidebar-session-search__layout-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.sidebar-session-search__layout {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+}
+
+.sidebar-session-search__layout-button {
+  width: 26px;
+  height: 26px;
+}
+
+.sidebar-session-search__layout-button[aria-checked="true"] {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text-strong);
+}
+
+.sidebar-session-search__results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-session-search__results--flat {
+  gap: 0;
+}
+
+.sidebar-session-search__group {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-session-search__option {
+  display: flex;
+  align-items: center;
+  gap: var(--sidebar-row-gap);
+  min-width: 0;
+  min-height: var(--sidebar-session-row-min-height);
+  padding: 4px 8px 4px var(--sidebar-inset);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  cursor: var(--cursor-action);
+}
+
+.sidebar-session-search__option:hover,
+.sidebar-session-search__option--cursor {
+  background: color-mix(in srgb, var(--bg-hover) 78%, transparent);
+}
+
+.sidebar-session-search__option.sidebar-session-search__option--active {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text-strong);
+}
+
+.sidebar-session-search__agent {
+  font-weight: 600;
+}
+
+.sidebar-session-search__session:not(.sidebar-session-search__session--flat) {
+  padding-inline-start: var(--sidebar-text-offset);
+}
+
+.sidebar-session-search__copy {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidebar-session-search__title,
+.sidebar-session-search__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-session-search__title {
+  line-height: var(--sidebar-title-line-height);
+}
+
+.sidebar-session-search__meta {
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+}
+
+.sidebar-session-search__option--remote .sidebar-session-search__title {
+  color: var(--muted);
+}
+
+.sidebar-session-search__mark {
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sidebar-session-search__empty,
+.sidebar-session-search__footer {
+  margin: 0;
+  padding-inline-start: var(--sidebar-inset);
+  color: var(--muted);
+  font-size: var(--control-ui-text-sm);
+}
+
+/* One agent glyph for search results and the all-agents flat list. */
+.sidebar-session-search__avatar,
+.sidebar-recent-session__agent {
+  display: grid;
+  flex: 0 0 20px;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--bg-accent);
+  font-size: 12px;
+}
+
+.sidebar-session-list-body {
+  display: contents;
+}
+
+.sidebar-session-list-body[hidden] {
+  display: none;
+}

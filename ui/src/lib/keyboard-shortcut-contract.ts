@@ -40,6 +40,9 @@ export const KEYBOARD_SHORTCUT_COMBOS = {
   imagePanRight: { modifiers: ["shift"], key: "ArrowRight" },
   imagePanUp: { modifiers: ["shift"], key: "ArrowUp" },
   imagePanDown: { modifiers: ["shift"], key: "ArrowDown" },
+  // The sidebar matches the produced "/" itself: a bare key must not take the
+  // physical-key fallback, which would swallow letters on other layouts.
+  sidebarSearch: { modifiers: [], key: "/" },
   // Display-only mouse chords; never keyboard-matched.
   toggleSessionSelect: { modifiers: ["alt"], key: "Click" },
   extendSessionSelect: { modifiers: ["shift"], key: "Click" },

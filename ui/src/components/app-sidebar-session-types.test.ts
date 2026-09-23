@@ -5,11 +5,13 @@ import { createStorageMock } from "../test-helpers/storage.ts";
 import {
   loadStoredCollapsedSessionSections,
   loadStoredHiddenSessionCatalogIds,
+  loadStoredSidebarRosterLayout,
   loadStoredSidebarSessionSortMode,
   loadStoredSidebarSessionStatusFilter,
   loadStoredSidebarSessionOwnerFilter,
   loadStoredSidebarSessionsShowPreview,
   setStoredSessionCatalogHidden,
+  storeSidebarRosterLayout,
   storeSidebarSessionSortMode,
   storeSidebarSessionStatusFilter,
   storeSidebarSessionOwnerFilter,
@@ -138,6 +140,33 @@ describe("sidebar session sort preference", () => {
   it("stores created instead of a people sort the gateway denied", () => {
     expect(storeSidebarSessionSortMode("people", false)).toBe("created");
     expect(loadStoredSidebarSessionSortMode()).toBe("created");
+  });
+});
+
+describe("all-agents roster layout preference", () => {
+  it("defaults absent and unknown stored values to the flat list", () => {
+    expect(loadStoredSidebarRosterLayout()).toBe("flat");
+    localStorage.setItem("openclaw:sidebar:sessions:roster-layout", "unexpected");
+    expect(loadStoredSidebarRosterLayout()).toBe("flat");
+  });
+
+  it("round-trips the grouped roster under a stable key", () => {
+    storeSidebarRosterLayout("grouped");
+    expect(localStorage.getItem("openclaw:sidebar:sessions:roster-layout")).toBe("grouped");
+    expect(loadStoredSidebarRosterLayout()).toBe("grouped");
+    storeSidebarRosterLayout("flat");
+    expect(loadStoredSidebarRosterLayout()).toBe("flat");
+  });
+
+  it("keeps rendering when browser storage rejects access", () => {
+    localStorage.getItem = () => {
+      throw new Error("storage disabled");
+    };
+    localStorage.setItem = () => {
+      throw new Error("storage disabled");
+    };
+    expect(loadStoredSidebarRosterLayout()).toBe("flat");
+    expect(() => storeSidebarRosterLayout("grouped")).not.toThrow();
   });
 });
 
