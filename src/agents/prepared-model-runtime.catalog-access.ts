@@ -56,6 +56,9 @@ import type {
 export const MAX_CONCURRENT_FULL_MODEL_CATALOG_BUILDS = 1;
 const limitFullModelCatalogBuild = pLimit(MAX_CONCURRENT_FULL_MODEL_CATALOG_BUILDS);
 const MODEL_CATALOG_FOREGROUND_WAIT_MS = 5_000;
+// All agents share one catalog worker, so provider TTLs (~60 s) times the agent count must
+// stay below its capacity; 51 agents at 60 s kept it at one full core with no traffic.
+export const MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS = 15 * 60_000;
 
 export function createFullModelCatalogAccess(
   params: PreparedModelRuntimeCatalogAccessParams,
@@ -458,7 +461,14 @@ export function createFullModelCatalogAccess(
                 normalizeProvider,
               ),
               credentials: preparedProviderCatalogCredentials(auth, provider, normalizeProvider),
-              ...(!failed && expiresAt !== undefined ? { expiresAt } : {}),
+              ...(!failed && expiresAt !== undefined
+                ? {
+                    expiresAt: Math.max(
+                      expiresAt,
+                      Date.now() + MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS,
+                    ),
+                  }
+                : {}),
             });
           }
           inventory = {
