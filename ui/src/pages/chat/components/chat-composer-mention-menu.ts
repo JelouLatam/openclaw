@@ -12,6 +12,12 @@ import {
   renderComposerMenuOption,
 } from "../../../components/composer-menu.ts";
 import { t } from "../../../i18n/index.ts";
+import { resolveAgentAvatarUrl } from "../../../lib/avatar.ts";
+import {
+  NO_AGENT_MENTIONS,
+  rankAgentMentions,
+  type AgentMentionRoster,
+} from "../../../lib/chat/agent-mentions.ts";
 import type { HumanMention } from "../../../lib/chat/chat-types.ts";
 import { MAX_HUMAN_MENTIONS, updateHumanMentions } from "../../../lib/chat/human-mentions.ts";
 import "../../../styles/chat/mention-menu.css";
@@ -79,9 +85,14 @@ function findMentionTarget(value: string, caret: number): MentionTarget | null {
   return { start, end, query, value };
 }
 
-/** One bounded suggestion lifecycle shared by existing- and new-session composers. */
+/**
+ * One bounded suggestion lifecycle shared by existing- and new-session composers.
+ * Agents rank locally above the people directory; choosing one inserts plain `@id` text.
+ */
 export class HumanMentionMenu {
   private directory?: HumanMentionDirectory;
+  private agentRoster?: AgentMentionRoster;
+  private agents = NO_AGENT_MENTIONS;
   private generation = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private target: MentionTarget | null = null;
@@ -93,7 +104,7 @@ export class HumanMentionMenu {
   private readonly requests = new Map<string, Promise<UsersMentionableResult>>();
 
   get open(): boolean {
-    return this.target !== null;
+    return this.target !== null && (this.directory !== undefined || this.agents.matches.length > 0);
   }
 
   syncDirectory(directory: HumanMentionDirectory | undefined) {
@@ -115,6 +126,21 @@ export class HumanMentionMenu {
     this.directory = directory ? { ...directory } : undefined;
   }
 
+  syncAgents(roster: AgentMentionRoster | undefined) {
+    if (
+      this.agentRoster?.agents === roster?.agents &&
+      this.agentRoster?.currentAgentId === roster?.currentAgentId
+    ) {
+      return;
+    }
+    this.agentRoster = roster;
+    if (this.target) {
+      this.index = 0;
+      this.selectedProfileId = undefined;
+      this.agents = rankAgentMentions(roster, this.target.query);
+    }
+  }
+
   private cancelSearch() {
     this.generation += 1;
     clearTimeout(this.timer);
@@ -127,10 +153,12 @@ export class HumanMentionMenu {
     this.search = null;
     this.index = 0;
     this.selectedProfileId = undefined;
+    this.agents = NO_AGENT_MENTIONS;
   }
 
   dispose() {
     this.syncDirectory(undefined);
+    this.agentRoster = undefined;
   }
 
   update(
@@ -139,7 +167,7 @@ export class HumanMentionMenu {
     intent: "input" | "trigger" | "selection" = "selection",
   ) {
     const { value, selectionStart: caret, selectionEnd } = input;
-    const target = this.directory ? findMentionTarget(value, caret) : null;
+    const target = this.directory || this.agentRoster ? findMentionTarget(value, caret) : null;
     // Only typing may extend a full-name query. Moving into untouched prose or
     // another @ must retire the current invocation, not start a different search.
     const leftTarget =
@@ -148,8 +176,8 @@ export class HumanMentionMenu {
       (value !== this.target.value ||
         target?.start !== this.target.start ||
         selectionEnd > this.target.end);
-    if (!target || leftTarget || (!this.open && intent !== "trigger")) {
-      if (this.open) {
+    if (!target || leftTarget || (!this.target && intent !== "trigger")) {
+      if (this.target) {
         this.close();
         requestUpdate();
       }
@@ -168,15 +196,29 @@ export class HumanMentionMenu {
     if (previous?.start === target.start && previous.query === target.query) {
       return;
     }
+    const previousOffset = this.agents.matches.length;
+    this.agents = rankAgentMentions(this.agentRoster, target.query);
+    this.index =
+      this.selectedProfileId !== undefined && this.index >= previousOffset
+        ? this.agents.matches.length + this.index - previousOffset
+        : 0;
+    if (!this.directory) {
+      this.search = null;
+      requestUpdate();
+      return;
+    }
     this.searchPeople(requestUpdate);
   }
 
+  private people(): UsersMentionableResult["users"] {
+    return this.search?.kind === "ready" ? this.search.result.users : [];
+  }
+
   private showResults(result: UsersMentionableResult) {
-    this.index = Math.max(
-      0,
-      result.users.findIndex((user) => user.profileId === this.selectedProfileId),
-    );
-    this.selectedProfileId = result.users[this.index]?.profileId;
+    const offset = this.agents.matches.length;
+    const selected = result.users.findIndex((user) => user.profileId === this.selectedProfileId);
+    this.index = selected >= 0 ? offset + selected : this.index < offset ? this.index : 0;
+    this.selectedProfileId = result.users[this.index - offset]?.profileId;
     this.search = { kind: "ready", result };
   }
 
@@ -285,15 +327,20 @@ export class HumanMentionMenu {
   }
 
   activeId(paneId: string): string | null {
-    return this.search?.kind === "ready" && this.search.result.users[this.index]
-      ? paneDomId(paneId, `mention-option-${this.index}`)
+    const offset = this.agents.matches.length;
+    if (this.index < offset) {
+      return paneDomId(paneId, `mention-agent-option-${this.index}`);
+    }
+    return this.people()[this.index - offset]
+      ? paneDomId(paneId, `mention-option-${this.index - offset}`)
       : null;
   }
 
   activeLabel(): string {
-    return this.search?.kind === "ready"
-      ? (this.search.result.users[this.index]?.displayName ?? "")
-      : "";
+    const offset = this.agents.matches.length;
+    return this.index < offset
+      ? this.agents.matches[this.index]!.label
+      : (this.people()[this.index - offset]?.displayName ?? "");
   }
 
   handleKeydown(event: KeyboardEvent, host: HumanMentionMenuHost, requestUpdate: () => void) {
@@ -303,9 +350,10 @@ export class HumanMentionMenu {
     if (this.search?.kind === "error" && event.key === "Tab") {
       return false;
     }
-    const users = this.search?.kind === "ready" ? this.search.result.users : [];
+    const offset = this.agents.matches.length;
+    const users = this.people();
     return handleComposerMenuKeydown(event, {
-      count: users.length,
+      count: offset + users.length,
       index: this.index,
       consumeEmpty: true,
       close: () => {
@@ -314,16 +362,28 @@ export class HumanMentionMenu {
       },
       move: (index) => {
         this.index = index;
-        this.selectedProfileId = users[index]?.profileId;
+        this.selectedProfileId = users[index - offset]?.profileId;
         requestUpdate();
         return this.activeId(host.paneId);
       },
-      select: () => this.select(users[this.index]!, host, requestUpdate),
+      select: () => this.select(this.index, host, requestUpdate),
     });
   }
 
-  private select(
-    person: UsersMentionableResult["users"][number],
+  private select(index: number, host: HumanMentionMenuHost, requestUpdate: () => void) {
+    const match = this.agents.matches[index];
+    const person = this.people()[index - this.agents.matches.length];
+    if (match) {
+      this.insert(`@${match.agent.id}`, undefined, host, requestUpdate);
+    } else if (person) {
+      this.insert(`@${person.displayName}`, person, host, requestUpdate);
+    }
+  }
+
+  /** Only a person becomes a recipient; an agent mention stays plain text. */
+  private insert(
+    label: string,
+    person: UsersMentionableResult["users"][number] | undefined,
     host: HumanMentionMenuHost,
     requestUpdate: () => void,
   ) {
@@ -334,21 +394,23 @@ export class HumanMentionMenu {
       requestUpdate,
     );
     const target = this.target;
-    if (!target || host.getMentions().length >= MAX_HUMAN_MENTIONS) {
+    if (!target || (person && host.getMentions().length >= MAX_HUMAN_MENTIONS)) {
       return;
     }
-    const label = `@${person.displayName}`;
     const replacement = `${label} `;
     const next = `${current.slice(0, target.start)}${replacement}${current.slice(target.end)}`;
-    const mentions = [
-      ...updateHumanMentions(current, next, host.getMentions(), {
-        value: current,
-        start: target.start,
-        end: target.end,
-        inputType: "insertReplacementText",
-      }),
-      { profileId: person.profileId, start: target.start, end: target.start + label.length },
-    ].toSorted((a, b) => a.start - b.start);
+    const kept = updateHumanMentions(current, next, host.getMentions(), {
+      value: current,
+      start: target.start,
+      end: target.end,
+      inputType: "insertReplacementText",
+    });
+    const mentions = person
+      ? [
+          ...kept,
+          { profileId: person.profileId, start: target.start, end: target.start + label.length },
+        ].toSorted((a, b) => a.start - b.start)
+      : kept;
     // Preserve only selected presentation URLs, so the shared loader reuses the
     // exact image already requested by the picker. Recipient metadata stays unchanged.
     for (const profileId of this.selectedAvatars.keys()) {
@@ -356,9 +418,9 @@ export class HumanMentionMenu {
         this.selectedAvatars.delete(profileId);
       }
     }
-    if (person.avatarUrl) {
+    if (person?.avatarUrl) {
       this.selectedAvatars.set(person.profileId, person.avatarUrl);
-    } else {
+    } else if (person) {
       this.selectedAvatars.delete(person.profileId);
     }
     host.commitDraft(next, mentions);
@@ -378,10 +440,74 @@ export class HumanMentionMenu {
     return this.selectedAvatars;
   }
 
+  private renderOption(
+    index: number,
+    host: HumanMentionMenuHost,
+    requestUpdate: () => void,
+    option: { id: string; icon: unknown; name: string; description: unknown },
+  ) {
+    return renderComposerMenuOption({
+      id: paneDomId(host.paneId, option.id),
+      active: index === this.index,
+      select: () => this.select(index, host, requestUpdate),
+      hover: () => {
+        this.index = index;
+        this.selectedProfileId = this.people()[index - this.agents.matches.length]?.profileId;
+        requestUpdate();
+      },
+      icon: option.icon,
+      iconHidden: true,
+      name: option.name,
+      description: option.description,
+    });
+  }
+
+  private renderAgents(host: HumanMentionMenuHost, requestUpdate: () => void) {
+    const { matches, overflow } = this.agents;
+    if (matches.length === 0) {
+      return nothing;
+    }
+    return html`<div class="slash-menu-group">
+      <div class="slash-menu-group__label">${t("chat.mentions.agents")}</div>
+      ${matches.map(({ agent, label }, index) =>
+        this.renderOption(index, host, requestUpdate, {
+          id: `mention-agent-option-${index}`,
+          icon: renderChatAuthorAvatar({
+            id: agent.id,
+            name: label,
+            identity: { type: "agent", id: agent.id },
+            profileAvatarUrl: resolveAgentAvatarUrl(agent) ?? undefined,
+          }),
+          name: label,
+          description: `@${agent.id}`,
+        }),
+      )}
+      ${
+        overflow > 0
+          ? html`<div class="slash-menu-group__label">
+              ${t("chat.mentions.agentsMore", { count: String(overflow) })}
+            </div>`
+          : nothing
+      }
+    </div>`;
+  }
+
   render(host: HumanMentionMenuHost, requestUpdate: () => void) {
     if (!this.open) {
       return nothing;
     }
+    const agents = this.renderAgents(host, requestUpdate);
+    if (!this.directory) {
+      return renderComposerMenu({
+        id: paneDomId(host.paneId, "mention-menu-listbox"),
+        className: "mention-menu",
+        label: t("chat.mentions.agents"),
+        trackScroll: false,
+        activeId: this.activeId(host.paneId),
+        content: agents,
+      });
+    }
+    const offset = this.agents.matches.length;
     const result = this.search?.kind === "ready" ? this.search.result : undefined;
     const limited = host.getMentions().length >= MAX_HUMAN_MENTIONS;
     const loading = this.search?.kind === "loading";
@@ -395,10 +521,11 @@ export class HumanMentionMenu {
     return renderComposerMenu({
       id: paneDomId(host.paneId, "mention-menu-listbox"),
       className: "mention-menu",
-      label: t("chat.mentions.menu"),
+      label: offset > 0 ? t("chat.mentions.menuWithAgents") : t("chat.mentions.menu"),
       trackScroll: false,
       activeId: this.activeId(host.paneId),
-      content: html` <div class="slash-menu-group" aria-busy=${loading}>
+      content: html`${agents}
+        <div class="slash-menu-group" aria-busy=${loading}>
         <div class="slash-menu-group__label" role="status">
           ${message ?? t("chat.mentions.menu")}
         </div>
@@ -429,22 +556,14 @@ export class HumanMentionMenu {
                   </div>`,
                 )
               : result?.users.map((person, index) =>
-                  renderComposerMenuOption({
-                    id: paneDomId(host.paneId, `mention-option-${index}`),
-                    active: index === this.index,
-                    select: () => this.select(person, host, requestUpdate),
-                    hover: () => {
-                      this.index = index;
-                      this.selectedProfileId = person.profileId;
-                      requestUpdate();
-                    },
+                  this.renderOption(offset + index, host, requestUpdate, {
+                    id: `mention-option-${index}`,
                     icon: renderChatAuthorAvatar({
                       id: person.profileId,
                       name: person.displayName,
                       identity: { type: "profile", id: person.profileId },
                       profileAvatarUrl: person.avatarUrl,
                     }),
-                    iconHidden: true,
                     name: person.displayName,
                     description: person.online ? t("chat.mentions.online") : nothing,
                   }),

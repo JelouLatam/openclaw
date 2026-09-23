@@ -1,5 +1,6 @@
 import type { nothing, TemplateResult } from "lit";
 import type { ImageLightboxItem } from "../../components/image-lightbox.types.ts";
+import type { AgentMentionRoster } from "../../lib/chat/agent-mentions.ts";
 import type { ChatAttachment, HumanMention } from "../../lib/chat/chat-types.ts";
 import type { SessionToolOverrides } from "../../lib/sessions/patch.ts";
 import type { ChatAttachmentReadLifecycle } from "../chat/components/chat-attachment-reads.ts";
@@ -20,6 +21,7 @@ export type NewSessionComposerOptions = {
   mentions?: readonly HumanMention[];
   getMentions?: () => readonly HumanMention[];
   mentionDirectory?: HumanMentionDirectory;
+  mentionAgents?: AgentMentionRoster;
   modelControl?: TemplateResult | typeof nothing;
   permissionControl?: TemplateResult | typeof nothing;
   pendingAttachmentReads: number;

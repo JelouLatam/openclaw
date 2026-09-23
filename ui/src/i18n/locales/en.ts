@@ -3292,6 +3292,9 @@ export const en: TranslationMap & {
     },
     mentions: {
       menu: "Mention a person",
+      menuWithAgents: "Mention an agent or person",
+      agents: "Mention an agent",
+      agentsMore: "{count} more · keep typing",
       empty: "No people found",
       truncated: "Keep typing to find more people.",
       online: "Online",

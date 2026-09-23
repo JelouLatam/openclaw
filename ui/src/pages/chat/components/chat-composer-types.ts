@@ -9,6 +9,7 @@ import type {
 import type { QuestionPrompt } from "../../../app/question-prompt.ts";
 import type { ChatFollowUpMode, ChatSendShortcut } from "../../../app/settings.ts";
 import type { SessionProgressCardRefreshAction } from "../../../components/session-progress-card.ts";
+import type { AgentMentionRoster } from "../../../lib/chat/agent-mentions.ts";
 import type {
   ChatGoalAction,
   ChatGoalDraft,
@@ -116,6 +117,7 @@ export type ChatComposerProps = ChatAttachmentControlsProps & {
   mentions?: readonly HumanMention[];
   getMentions?: () => readonly HumanMention[];
   mentionDirectory?: HumanMentionDirectory;
+  mentionAgents?: AgentMentionRoster;
   mentionsUnsupported?: boolean;
   modelCatalog: readonly ModelCatalogEntry[];
   modelSwitching: boolean;

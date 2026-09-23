@@ -175,6 +175,7 @@ export function renderNewSessionComposer(options: NewSessionComposerOptions) {
       ? undefined
       : options.mentionDirectory,
   );
+  mentionMenu.syncAgents(composerLocked ? undefined : options.mentionAgents);
   const skillMenuHost: SkillMenuHost = {
     paneId: "new-session",
     getDraft: () => options.textareaController.getTextarea()?.value ?? options.message,

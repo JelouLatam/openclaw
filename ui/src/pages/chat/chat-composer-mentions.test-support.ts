@@ -2,6 +2,7 @@ import type { UsersMentionableResult } from "@openclaw/gateway-protocol";
 import { nothing, render } from "lit";
 import { onTestFinished, vi } from "vitest";
 import { GatewayBrowserClient } from "../../api/gateway.ts";
+import type { GatewayAgentRow } from "../../api/types.ts";
 import type { HumanMention } from "../../lib/chat/chat-types.ts";
 import { updateHumanMentions } from "../../lib/chat/human-mentions.ts";
 /* @vitest-environment jsdom */
@@ -30,6 +31,7 @@ export function composerFixture(
   initial = "",
   initialMentions: readonly HumanMention[] = [],
   submitDisabledReason?: string,
+  agents?: readonly GatewayAgentRow[],
 ) {
   vi.useFakeTimers();
   onTestFinished(installChatComposerPickerDismissal(document));
@@ -48,6 +50,7 @@ export function composerFixture(
   let mentions = initialMentions;
   let ownerKey = "sender-one";
   let unsupported = false;
+  const mentionAgents = agents ? { agents, currentAgentId: "main" } : undefined;
   const send = vi.fn();
   const abort = vi.fn();
   const slashCommand = vi.fn();
@@ -72,6 +75,7 @@ export function composerFixture(
             getDraft: () => draft,
             getMentions: () => mentions,
             mentionDirectory: unsupported ? undefined : directory,
+            mentionAgents,
             mentionsUnsupported: unsupported,
             onDraftChange: onInput,
             onRequestUpdate: renderCurrent,
@@ -85,7 +89,8 @@ export function composerFixture(
             message: draft,
             mentions,
             getMentions: () => mentions,
-            mentionDirectory: directory,
+            mentionDirectory: unsupported ? undefined : directory,
+            mentionAgents,
             attachments: [],
             getAttachments: () => [],
             canSubmit: true,
@@ -141,6 +146,7 @@ export function composerFixture(
   };
   return {
     container,
+    textarea,
     request,
     edit,
     key: pressKey,
