@@ -612,6 +612,9 @@ openclaw-pending-session-create {
 }
 
 .chat-inline-approval {
+  /* Same stacking as .chat-prs: the transcript's positioned rows underlap the composer stack. */
+  position: relative;
+  z-index: 1;
   flex: 0 0 auto;
   width: calc(100% - 2 * var(--chat-thread-gutter) - 2 * var(--chat-thread-side-inset));
   max-width: var(--chat-thread-max-width);
