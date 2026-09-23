@@ -31,6 +31,7 @@ import {
 } from "../../../talk/provider-internal.js";
 import { resolveConfiguredRealtimeVoiceProvider } from "../../../talk/provider-resolver.js";
 import { resolveSandboxedSessionCreation } from "../../operator-role-policy.js";
+import { gatewayClientSenderFields } from "../../server-methods/gateway-client-identity.js";
 import { resolveOperatorSessionCreation } from "../../server-methods/session-creation-provenance.js";
 import type { GatewayRequestHandler, RespondFn } from "../../server-methods/types.js";
 import { assertValidParams } from "../../server-methods/validation.js";
@@ -308,6 +309,7 @@ export const createTalkClient: GatewayRequestHandler = async ({
                 text,
                 confirmation,
                 config: runtimeConfig,
+                ...gatewayClientSenderFields(client),
               }),
             flushTranscript: () =>
               flushClientVoiceSessionWrites({

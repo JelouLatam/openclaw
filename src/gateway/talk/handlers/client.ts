@@ -32,6 +32,7 @@ import {
   resolveOpenClientVoiceSessionId,
 } from "../../../talk/client-voice-session.js";
 import { resolveSandboxedSessionCreation } from "../../operator-role-policy.js";
+import { gatewayClientSenderFields } from "../../server-methods/gateway-client-identity.js";
 import type { GatewayRequestHandlers } from "../../server-methods/types.js";
 import { assertValidParams } from "../../server-methods/validation.js";
 import { SessionMutationAuthorizationChangedError } from "../../session-mutation-authorization-error.js";
@@ -187,7 +188,13 @@ export const talkClientHandlers: GatewayRequestHandlers = {
       undefined,
     );
   },
-  "talk.client.transcript": async ({ params, respond, context, sessionMutationAuthorization }) => {
+  "talk.client.transcript": async ({
+    params,
+    respond,
+    context,
+    client,
+    sessionMutationAuthorization,
+  }) => {
     if (
       !assertValidParams(
         params,
@@ -214,6 +221,7 @@ export const talkClientHandlers: GatewayRequestHandlers = {
         text: params.text,
         ...(params.timestamp !== undefined ? { timestamp: params.timestamp } : {}),
         config,
+        ...gatewayClientSenderFields(client),
       });
       respond(true, { ok: true }, undefined);
     } catch (err) {
