@@ -432,6 +432,38 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
     });
   };
 
+  /** Team rows leave Home to the agent headers; the flat layout has none, so Home rejoins its rows. */
+  private withHomeRows(
+    rows: readonly SidebarRecentSession[],
+    agentIds: readonly string[],
+  ): SidebarRecentSession[] {
+    if (
+      this.sessionsStatusFilter === "archived" ||
+      this.sessionOwnerFilterActive ||
+      this.sessionInvolvingMeFilterActive
+    ) {
+      return [...rows];
+    }
+    // Rows arrive sorted; each Home slots in before the first row the sort ranks after it.
+    const compare = createSidebarSessionRowsComparator(this.readSidebarSessionSortOptions);
+    const sources = new Map(
+      (this.groupedSessionSource?.result?.sessions ?? []).map((row) => [row.key, row]),
+    );
+    const merged = [...rows];
+    for (const agentId of agentIds) {
+      const main = this.mainSessionRow(agentId);
+      if (!main) {
+        continue;
+      }
+      const index = merged.findIndex((row) => {
+        const source = sources.get(row.key);
+        return source !== undefined && compare(main, source) < 0;
+      });
+      merged.splice(index < 0 ? merged.length : index, 0, this.projectHomeSession(main, agentId));
+    }
+    return merged;
+  }
+
   /** Collapsed zones keep full rows for true header counts and status dots. */
   protected zonedVisibleSections(
     rows: SidebarRecentSession[],
@@ -449,7 +481,7 @@ export class AppSidebarSessionNavigationElement extends AppSidebarBase {
     const sections = !roster
       ? undefined
       : this.rosterLayout === "flat"
-        ? agentSections("*", rows)
+        ? agentSections("*", this.withHomeRows(rows, roster.agentIds))
         : roster.agentIds.flatMap((agentId) =>
             agentSections(
               agentId,
