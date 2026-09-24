@@ -1883,6 +1883,25 @@ describe("capability cli", () => {
     expect(describeCall?.timeoutMs).toBe(90000);
   });
 
+  it("passes video describe prompts through media understanding", async () => {
+    await runCapability(
+      "video",
+      "describe",
+      "--file",
+      "clip.mp4",
+      "--prompt",
+      "What happens between 02:30 and 03:40?",
+      "--timeout-ms",
+      "240000",
+      "--json",
+    );
+
+    const describeCall = firstVideoDescriptionCall();
+    expect(path.basename(String(describeCall?.filePath ?? ""))).toBe("clip.mp4");
+    expect(describeCall?.prompt).toBe("What happens between 02:30 and 03:40?");
+    expect(describeCall?.timeoutMs).toBe(240000);
+  });
+
   it("keeps image describe URL files as remote media references", async () => {
     await runCapability("image", "describe", "--file", "https://example.com/photo.png", "--json");
 

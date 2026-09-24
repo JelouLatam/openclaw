@@ -247,6 +247,7 @@ openclaw infer video generate --prompt "slow drone shot over a forest lake" --re
 openclaw infer video describe --file ./clip.mp4 --json
 openclaw infer video describe --agent <id> --file ./clip.mp4 --json
 openclaw infer video describe --file ./clip.mp4 --model openai/gpt-5.4-mini --json
+openclaw infer video describe --file ./clip.mp4 --prompt "What happens between 02:30 and 03:40?" --json
 ```
 
 Notes:
@@ -255,6 +256,7 @@ Notes:
 - Provider-hosted video downloads reject empty, text, and JSON responses instead of reporting an unusable file as successful output.
 - With `--output`, URL-backed video streams to a sibling temporary file and replaces the destination only after the complete non-empty download succeeds; a failed stream leaves an existing destination unchanged.
 - `--model` must be `<provider/model>` for `video describe`.
+- `video describe` accepts `--prompt` and `--timeout-ms`; they override `tools.media.video.prompt` and `timeoutSeconds` for that call, and `maxChars` still applies.
 
 ## Web
 

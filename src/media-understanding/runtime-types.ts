@@ -119,6 +119,8 @@ export type DescribeVideoFileParams = {
   workspaceDir?: string;
   mime?: string;
   activeModel?: ActiveMediaModel;
+  prompt?: string;
+  timeoutMs?: number;
 };
 
 export type TranscribeAudioFileParams = {

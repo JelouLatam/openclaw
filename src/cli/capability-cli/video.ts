@@ -4,6 +4,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { extensionForMime, normalizeMimeType } from "@openclaw/media-core/mime";
+import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { Command } from "commander";
 import { resolveAgentDir } from "../../agents/agent-scope.js";
 import {
@@ -236,7 +237,13 @@ async function runVideoGenerate(params: {
   } satisfies CapabilityEnvelope;
 }
 
-async function runVideoDescribe(params: { file: string; model?: string; agent?: string }) {
+async function runVideoDescribe(params: {
+  file: string;
+  model?: string;
+  agent?: string;
+  prompt?: string;
+  timeoutMs?: number;
+}) {
   const cfg = await resolveLocalCapabilityRuntimeConfig({
     commandName: "infer video.describe",
     targetIds: getModelsCommandSecretTargetIds(),
@@ -251,6 +258,8 @@ async function runVideoDescribe(params: { file: string; model?: string; agent?: 
     agentId,
     agentDir,
     activeModel,
+    prompt: normalizeOptionalString(params.prompt),
+    timeoutMs: params.timeoutMs,
   });
   if (!result.text) {
     throw new Error(`No description returned for video: ${path.resolve(params.file)}`);
@@ -315,6 +324,8 @@ export function registerVideoCapabilityCommands(capability: Command): void {
     .requiredOption("--file <path>", "Video file")
     .option("--agent <id>", "Agent whose model and auth state should be used")
     .option("--model <provider/model>", "Model override")
+    .option("--prompt <text>", "Prompt hint")
+    .option("--timeout-ms <ms>", "Provider request timeout in milliseconds")
     .option("--json", "Output JSON", false)
     .action(async (opts, command) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
@@ -322,6 +333,8 @@ export function registerVideoCapabilityCommands(capability: Command): void {
           file: String(opts.file),
           agent: resolveCapabilityAgentOption(command, opts.agent),
           model: opts.model as string | undefined,
+          prompt: opts.prompt as string | undefined,
+          timeoutMs: parseOptionalTimeoutMs(opts.timeoutMs),
         });
         emitJsonOrText(defaultRuntime, Boolean(opts.json), result, formatEnvelopeForText);
       });
