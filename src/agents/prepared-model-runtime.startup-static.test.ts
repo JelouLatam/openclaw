@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ModelProviderConfig } from "../config/types.models.js";
 import {
   bindPluginMetadataSnapshotCache,
@@ -604,6 +604,10 @@ describe("prepared model runtime Gateway catalog mode", () => {
   });
 
   it("does not refresh a provider catalog again within the minimum interval", async () => {
+    const defaultWorker = mocks.runPreparedModelCatalogWorker.getMockImplementation()!;
+    onTestFinished(() => {
+      mocks.runPreparedModelCatalogWorker.mockImplementation(defaultWorker);
+    });
     mocks.runPreparedModelCatalogWorker.mockImplementation(async () => {
       mocks.providerExpiries = new Map([["openai", Date.now() - 1]]);
       return {
@@ -630,7 +634,9 @@ describe("prepared model runtime Gateway catalog mode", () => {
     // Every read past a lapsed provider TTL would queue a refresh once the in-flight build settles.
     for (let read = 0; read < 40; read++) {
       await snapshot!.loadFullModelCatalog!();
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 25);
+      });
     }
     expect(mocks.runPreparedModelCatalogWorker).toHaveBeenCalledTimes(builds);
     expect(MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS).toBeGreaterThanOrEqual(15 * 60_000);
