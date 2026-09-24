@@ -117,6 +117,9 @@ Validating before send:
    `policy.maxPayload`. `policy.attachments` is a per-attachment ceiling, never a
    promise the frame fits: attachments travel as base64, so a 20 MB file is about
    26.7 MB on the wire and exceeds the default 25 MiB frame limit on its own.
+   `OPENCLAW_GATEWAY_MAX_PAYLOAD_MB` on the Gateway process raises that frame
+   limit (never below 25, at most 512); size it to about 4/3 of
+   `agents.defaults.mediaMaxMb` plus headroom, e.g. `72` for a 50 MB ceiling.
 3. Treat the server as authoritative for everything else. Accepted MIME types and
    per-message handling are deliberately not advertised because they depend on
    the entrypoint, the resolved model, and payload sniffing. The gateway can

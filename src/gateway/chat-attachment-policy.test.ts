@@ -1,7 +1,7 @@
 // Attachment policy tests guard the numbers advertised on `hello-ok` against the
 // ceilings the parser actually enforces.
 import { MAX_IMAGE_BYTES } from "@openclaw/media-core/constants";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   DEFAULT_CHAT_ATTACHMENT_MAX_BYTES,
@@ -78,5 +78,19 @@ describe("resolveChatAttachmentPolicy", () => {
     const policy = resolveChatAttachmentPolicy(cfgWithMediaMaxMb(0.0000001));
     expect(policy.maxBytes).toBeGreaterThanOrEqual(1);
     expect(policy.maxImageBytes).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("resolveChatAttachmentPolicy with a raised frame ceiling", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("advertises a 50 MB mediaMaxMb once OPENCLAW_GATEWAY_MAX_PAYLOAD_MB fits its base64", async () => {
+    vi.stubEnv("OPENCLAW_GATEWAY_MAX_PAYLOAD_MB", "72");
+    vi.resetModules();
+    const policy = await import("./chat-attachment-policy.js");
+    expect(policy.resolveChatAttachmentPolicy(cfgWithMediaMaxMb(50)).maxBytes).toBe(50 * MB);
   });
 });
