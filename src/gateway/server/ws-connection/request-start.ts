@@ -4,6 +4,7 @@ import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import type { RequestFrame } from "../../../../packages/gateway-protocol/src/index.js";
 import { runOutsideGatewayRootWorkAdmission } from "../../../process/gateway-work-admission.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
+import { MAX_PAYLOAD_BYTES } from "../../server-constants.js";
 
 type StartBudget = {
   count: number;
@@ -23,7 +24,7 @@ const workBudget: StartBudget = {
   count: 0,
   bytes: 0,
   maxCount: 256,
-  maxBytes: 50 * 1024 * 1024,
+  maxBytes: MAX_PAYLOAD_BYTES * 2,
 };
 const controlBudget: StartBudget = { count: 0, bytes: 0, maxCount: 1024, maxBytes: 1024 * 1024 };
 const pending: RequestStart[] = [];
