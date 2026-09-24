@@ -526,55 +526,58 @@ export class HumanMentionMenu {
       activeId: this.activeId(host.paneId),
       content: html`${agents}
         <div class="slash-menu-group" aria-busy=${loading}>
-        <div class="slash-menu-group__label" role="status">
-          ${message ?? t("chat.mentions.menu")}
-        </div>
-        ${
-          this.search?.kind === "error" && !limited
-            ? html`<button
-                type="button"
-                class="btn btn--sm mention-menu__retry"
-                @click=${() => {
-                  this.searchPeople(requestUpdate);
-                  host.getTextarea()?.focus({ preventScroll: true });
-                }}
-              >
-                ${t("common.retry")}
-              </button>`
-            : nothing
-        }
-        ${
-          message
-            ? nothing
-            : loading
-              ? [0, 1, 2].map(
-                  () => html`<div class="slash-menu-item mention-menu__loading" aria-hidden="true">
-                    <span class="slash-menu-icon"
-                      ><span class="skeleton mention-menu__avatar"></span
-                    ></span>
-                    <span class="skeleton skeleton-line skeleton-line--medium"></span>
-                  </div>`,
-                )
-              : result?.users.map((person, index) =>
-                  this.renderOption(offset + index, host, requestUpdate, {
-                    id: `mention-option-${index}`,
-                    icon: renderChatAuthorAvatar({
-                      id: person.profileId,
+          <div class="slash-menu-group__label" role="status">
+            ${message ?? t("chat.mentions.menu")}
+          </div>
+          ${
+            this.search?.kind === "error" && !limited
+              ? html`<button
+                  type="button"
+                  class="btn btn--sm mention-menu__retry"
+                  @click=${() => {
+                    this.searchPeople(requestUpdate);
+                    host.getTextarea()?.focus({ preventScroll: true });
+                  }}
+                >
+                  ${t("common.retry")}
+                </button>`
+              : nothing
+          }
+          ${
+            message
+              ? nothing
+              : loading
+                ? [0, 1, 2].map(
+                    () => html`<div
+                      class="slash-menu-item mention-menu__loading"
+                      aria-hidden="true"
+                    >
+                      <span class="slash-menu-icon"
+                        ><span class="skeleton mention-menu__avatar"></span
+                      ></span>
+                      <span class="skeleton skeleton-line skeleton-line--medium"></span>
+                    </div>`,
+                  )
+                : result?.users.map((person, index) =>
+                    this.renderOption(offset + index, host, requestUpdate, {
+                      id: `mention-option-${index}`,
+                      icon: renderChatAuthorAvatar({
+                        id: person.profileId,
+                        name: person.displayName,
+                        identity: { type: "profile", id: person.profileId },
+                        profileAvatarUrl: person.avatarUrl,
+                      }),
                       name: person.displayName,
-                      identity: { type: "profile", id: person.profileId },
-                      profileAvatarUrl: person.avatarUrl,
+                      description: person.online ? t("chat.mentions.online") : nothing,
                     }),
-                    name: person.displayName,
-                    description: person.online ? t("chat.mentions.online") : nothing,
-                  }),
-                )
-        }
-        ${
-          result?.truncated
-            ? html`<div class="slash-menu-group__label">${t("chat.mentions.truncated")}</div>`
-            : nothing
-        }
-      </div>`,
+                  )
+          }
+          ${
+            result?.truncated
+              ? html`<div class="slash-menu-group__label">${t("chat.mentions.truncated")}</div>`
+              : nothing
+          }
+        </div>`,
     });
   }
 }

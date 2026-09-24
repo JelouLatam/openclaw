@@ -1,7 +1,10 @@
 /* @vitest-environment jsdom */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GatewayAgentRow } from "../../api/types.ts";
-import { composerFixture, resetMentionComposerFixture } from "./chat-composer-mentions.test-support.ts";
+import {
+  composerFixture,
+  resetMentionComposerFixture,
+} from "./chat-composer-mentions.test-support.ts";
 
 afterEach(resetMentionComposerFixture);
 
@@ -85,7 +88,9 @@ describe.each(["chat", "new-session"] as const)("%s agent mentions", (kind) => {
       draft: "@Alex ",
       mentions: [{ profileId: "profile-alex-online", start: 0, end: 5 }],
     });
-    expect(view.container.textContent).toContain("Will notify: @Alex");
+    expect(view.container.querySelector(".composer-context-strip__person-name")?.textContent).toBe(
+      "Alex",
+    );
   });
 
   it("offers agents without a people directory and leaves Enter to the composer when none match", () => {
