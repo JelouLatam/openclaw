@@ -99,10 +99,7 @@ type ExtractStructuredWithModelResult = Awaited<
   ReturnType<NonNullable<MediaUnderstandingProvider["extractStructured"]>>
 >;
 
-export type DescribeVideoFileParams = Omit<
-  DescribeImageFileParams,
-  "mediaUrl" | "prompt" | "timeoutMs" | "scopeContext"
->;
+export type DescribeVideoFileParams = Omit<DescribeImageFileParams, "mediaUrl" | "scopeContext">;
 
 export type TranscribeAudioFileParams = DescribeVideoFileParams & {
   language?: string;
