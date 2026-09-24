@@ -2,12 +2,14 @@ import { performance } from "node:perf_hooks";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { runOutsideGatewayRootWorkAdmission } from "../../../process/gateway-work-admission.js";
 import { BoundedSerialQueue } from "../../../shared/bounded-serial-queue.js";
+import { MAX_PAYLOAD_BYTES } from "../../server-constants.js";
 
 // One active scheduling task is separate from these waiting budgets. Each task
 // grants start permission only; it never owns the RPC or waits for its completion.
 const requestStarts = new BoundedSerialQueue({
   maxPendingCount: 256,
-  maxPendingWeight: 50 * 1024 * 1024,
+  // Must hold a full frame behind an active start, or large attachments fail under load.
+  maxPendingWeight: MAX_PAYLOAD_BYTES * 2,
 });
 const MAX_STARTS_PER_TURN = 64;
 const START_WORK_BUDGET_MS = 12;
