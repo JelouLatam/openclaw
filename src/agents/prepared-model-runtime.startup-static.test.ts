@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import type { ModelProviderConfig } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -585,6 +585,10 @@ describe("prepared model runtime Gateway catalog mode", () => {
   });
 
   it("does not refresh a provider catalog again within the minimum interval", async () => {
+    const defaultWorker = mocks.runPreparedModelCatalogWorker.getMockImplementation()!;
+    onTestFinished(() => {
+      mocks.runPreparedModelCatalogWorker.mockImplementation(defaultWorker);
+    });
     mocks.runPreparedModelCatalogWorker.mockImplementation(async () => {
       mocks.providerExpiries = new Map([["openai", Date.now() - 1]]);
       return {
