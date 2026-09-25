@@ -592,3 +592,51 @@ describe("explicit answer visibility across continuations", () => {
     ).toContainEqual(answer);
   });
 });
+
+describe("current-session automation deliveries", () => {
+  const automation = (text: string, timestamp: number) => ({
+    role: "assistant",
+    content: [{ type: "text", text }],
+    api: "openclaw-transcript",
+    provider: "openclaw",
+    model: "automation-result",
+    stopReason: "stop",
+    timestamp,
+    idempotencyKey: `cron-current-completion:cron:job:${timestamp}`,
+    openclawAutomation: { kind: "cron", jobId: "job", runId: `cron:job:${timestamp}` },
+  });
+
+  it("keeps every delivery and the replies between them outside collapsed work", () => {
+    const messages = [
+      { role: "user", content: "Set up a monitor", timestamp: 1 },
+      {
+        role: "toolResult",
+        toolCallId: "create",
+        toolName: "exec",
+        content: "created",
+        timestamp: 2,
+      },
+      { role: "assistant", content: "Created the automation", timestamp: 3 },
+      automation("tick 1", 4),
+      automation("tick 2", 5),
+      { role: "user", content: "What is the id?", timestamp: 6 },
+      { role: "assistant", content: "cc47b5b8", timestamp: 7 },
+      automation("tick 3", 8),
+    ];
+    const items = collapseCompletedTurnWork(cachedGroups(messages), {
+      sessionKey: "agent:main:dashboard:automation",
+      runWorking: false,
+    });
+    const work = items.filter((item) => item.kind === "work-group");
+    expect(
+      work.flatMap((item) =>
+        item.groups.flatMap((group) => group.messages.map(({ message }) => message)),
+      ),
+    ).toEqual([messages[1]]);
+    expect(
+      items
+        .filter((item) => item.kind === "group")
+        .flatMap((item) => item.messages.map(({ message }) => message)),
+    ).toEqual([messages[0], ...messages.slice(2)]);
+  });
+});
