@@ -48,6 +48,7 @@ interface SidebarMenusControllerState {
   catalogViewMenuPosition: CatalogMenuPosition | null;
   agentMenuPosition: { x: number; top: number } | null;
   agentMenuInteractionState: AgentMenuInteractionState;
+  agentMenuSearchQuery: string;
   identityMenuPosition: { x: number; bottom: number; width: number } | null;
 }
 
@@ -78,6 +79,7 @@ export class SidebarMenusController implements ReactiveController, SidebarMenusC
   catalogViewMenuTrigger: HTMLElement | null = null;
   agentMenuTrigger: HTMLElement | null = null;
   agentMenuInteractionState: AgentMenuInteractionState = "closed";
+  agentMenuSearchQuery = "";
   identityMenuTrigger: HTMLElement | null = null;
   private agentMenuHoverOpenTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private agentMenuHoverCloseTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
@@ -455,6 +457,7 @@ export class SidebarMenusController implements ReactiveController, SidebarMenusC
     this.closeCatalogViewMenu();
     this.closeIdentityMenu();
     this.agentMenuTrigger = trigger;
+    this.agentMenuSearchQuery = "";
     this.agentMenuFocusBeforeHover =
       interactionState === "open-hover" && document.activeElement instanceof HTMLElement
         ? document.activeElement
@@ -507,6 +510,10 @@ export class SidebarMenusController implements ReactiveController, SidebarMenusC
 
   handleAgentMenuPointerLeave() {
     this.scheduleAgentMenuHoverClose();
+  }
+
+  setAgentMenuSearchQuery(query: string) {
+    this.updateState("agentMenuSearchQuery", query);
   }
 
   restoreFocusAfterAgentMenuHoverOpen() {

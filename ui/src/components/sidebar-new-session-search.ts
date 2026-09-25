@@ -1,5 +1,8 @@
 import { html, nothing } from "lit";
 import { t } from "../i18n/index.ts";
+import { registerAgentsHomeEnglish } from "../i18n/locales/en-agents-home.ts";
+
+registerAgentsHomeEnglish();
 
 type SearchableAgent = { id: string; name: string };
 type DropdownItem = HTMLElement & { active: boolean };
@@ -34,16 +37,24 @@ function handleAgentSearchKeydown(event: KeyboardEvent) {
   // wa-dropdown runs typeahead, Home/End and roving arrows from a document
   // keydown listener, which would pull the caret out of the field.
   event.stopPropagation();
-  if (event.key !== "ArrowDown" || event.isComposing) {
+  if ((event.key !== "ArrowDown" && event.key !== "Enter") || event.isComposing) {
     return;
   }
   const dropdown = (event.currentTarget as HTMLElement).closest("wa-dropdown");
-  const items = [...(dropdown?.querySelectorAll<DropdownItem>(":scope > wa-dropdown-item") ?? [])];
+  const items = [
+    ...(dropdown?.querySelectorAll<DropdownItem>(
+      ":scope > wa-dropdown-item, :scope > div > wa-dropdown-item",
+    ) ?? []),
+  ];
   const first = items.find((item) => !item.hasAttribute("disabled"));
   if (!first) {
     return;
   }
   event.preventDefault();
+  if (event.key === "Enter") {
+    first.click();
+    return;
+  }
   items.forEach((item) => (item.active = item === first));
   first.focus();
 }
@@ -57,6 +68,7 @@ export function focusAgentSearch(root: ParentNode) {
 export function renderAgentSearch(params: {
   query: string;
   noMatches: boolean;
+  label?: string;
   onQueryChange: (query: string) => void;
 }) {
   return html`<div class="sidebar-new-session-menu__search">
@@ -65,7 +77,7 @@ export function renderAgentSearch(params: {
       type="search"
       autocomplete="off"
       spellcheck="false"
-      aria-label=${t("agentsHome.searchAgentsLabel")}
+      aria-label=${params.label ?? t("agentsHome.searchAgentsLabel")}
       placeholder=${t("agentsHome.searchAgents")}
       .value=${params.query}
       @input=${(event: Event) =>

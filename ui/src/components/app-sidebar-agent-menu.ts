@@ -16,10 +16,16 @@ import { normalizeAgentId } from "../lib/sessions/session-key.ts";
 import { renderAgentSelectAvatar, renderAgentSelectCopy } from "./agent-select.ts";
 import { icons, type IconName } from "./icons.ts";
 import {
+  filterAgentsBySearch,
+  focusAgentSearch,
+  renderAgentSearch,
+} from "./sidebar-new-session-search.ts";
+import {
   consumeDropdownKeyboardDismissal,
   syncDropdownItemRadio,
   trackDropdownKeyboardDismissal,
 } from "./web-awesome.ts";
+import "../styles/sidebar-agent-roster.css";
 
 // External rows of the footer identity menu. Docs-first: public docs pages over
 // raw GitHub, matching the ClawSweeper docs-link policy for user-facing copy.
@@ -148,6 +154,29 @@ function typeaheadSidebarMenuFocus(event: KeyboardEvent): boolean {
   return true;
 }
 
+function redirectTypingToAgentSearch(event: KeyboardEvent, params: SidebarAgentMenuParams) {
+  if (
+    event.key.length !== 1 ||
+    event.key === " " ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.altKey
+  ) {
+    return false;
+  }
+  const input = (event.currentTarget as HTMLElement).querySelector<HTMLInputElement>(
+    ".sidebar-new-session-menu__search-input",
+  );
+  if (!input) {
+    return false;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  params.onSearchQueryChange(`${input.value}${event.key}`);
+  input.focus({ preventScroll: true });
+  return true;
+}
+
 type AgentMenuAgent = {
   id: string;
   name?: string;
@@ -167,6 +196,8 @@ type SidebarAgentMenuParams = {
   avatarErrorHandler: (url: string) => () => void;
   openMode: "hover" | "click";
   rosterMode: boolean;
+  searchQuery: string;
+  onSearchQueryChange: (query: string) => void;
   onToggleRoster: () => void;
   agentUnreadCount: (agentId: string) => number;
   onPointerEnter: () => void;
@@ -197,7 +228,7 @@ function sidebarAgentMenuRows(params: {
   });
 }
 
-function renderAgentRow(agent: AgentMenuAgent, params: SidebarAgentMenuParams, autofocus: boolean) {
+function renderAgentRow(agent: AgentMenuAgent, params: SidebarAgentMenuParams, matched: boolean) {
   const agentId = normalizeAgentId(agent.id);
   const identity = params.identities.get(agentId) ?? null;
   const label = normalizeAgentLabel(agent, identity);
@@ -215,7 +246,8 @@ function renderAgentRow(agent: AgentMenuAgent, params: SidebarAgentMenuParams, a
       type="checkbox"
       role="menuitemradio"
       aria-checked=${String(active)}
-      ?autofocus=${autofocus}
+      ?hidden=${!matched}
+      ?disabled=${!matched}
       ${ref((element) => syncDropdownItemRadio(element, active))}
     >
       <span class="sidebar-agent-menu__agent-tile">
@@ -291,10 +323,16 @@ export function renderSidebarAgentMenu(params: SidebarAgentMenuParams) {
   const position = params.position;
   const { activeId, activeName, agents } = params;
   const agentRows = !params.rosterMode && agents.length > 1 ? sidebarAgentMenuRows(params) : [];
-  const autofocusAgent =
-    params.openMode === "click"
-      ? (agentRows.find((agent) => normalizeAgentId(agent.id) === activeId) ?? agentRows[0])
-      : undefined;
+  const searchable = agentRows.map((agent) => ({
+    agent,
+    id: agent.id,
+    name: normalizeAgentLabel(agent, params.identities.get(normalizeAgentId(agent.id)) ?? null),
+  }));
+  // Filtered-out tiles are disabled as well as hidden: arrow keys and typeahead
+  // skip only disabled items.
+  const matches = new Set(
+    filterAgentsBySearch(searchable, params.searchQuery).map((entry) => entry.agent),
+  );
   const menuLabel = t(params.rosterMode ? "agentChip.workspaceMenuLabel" : "agentChip.menuLabel");
   return html`
     <wa-dropdown
@@ -347,9 +385,17 @@ export function renderSidebarAgentMenu(params: SidebarAgentMenuParams) {
             break;
         }
       }}
-      @wa-after-show=${params.onAfterShow}
+      @wa-after-show=${(event: Event) => {
+        params.onAfterShow();
+        if (params.openMode === "click" && event.target === event.currentTarget) {
+          focusAgentSearch(event.currentTarget as HTMLElement);
+        }
+      }}
       @keydown=${(event: KeyboardEvent) => {
         if (moveSidebarMenuFocus(event)) {
+          return;
+        }
+        if (agentRows.length > 0 && redirectTypingToAgentSearch(event, params)) {
           return;
         }
         if (typeaheadSidebarMenuFocus(event)) {
@@ -383,8 +429,14 @@ export function renderSidebarAgentMenu(params: SidebarAgentMenuParams) {
         agentRows.length > 0
           ? html`
               <div class="sidebar-customize-menu__title">${t("agentChip.agents")}</div>
+              ${renderAgentSearch({
+                query: params.searchQuery,
+                noMatches: matches.size === 0,
+                label: t("agentChip.searchAgentsLabel"),
+                onQueryChange: params.onSearchQueryChange,
+              })}
               <div class="sidebar-agent-menu__agent-grid">
-                ${agentRows.map((entry) => renderAgentRow(entry, params, entry === autofocusAgent))}
+                ${agentRows.map((entry) => renderAgentRow(entry, params, matches.has(entry)))}
               </div>
               <div class="sidebar-customize-menu__separator" role="separator"></div>
             `
