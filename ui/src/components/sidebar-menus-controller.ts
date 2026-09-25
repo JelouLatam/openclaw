@@ -70,6 +70,7 @@ export class SidebarMenusController implements ReactiveController {
   catalogViewMenuTrigger: HTMLElement | null = null;
   agentMenuTrigger: HTMLElement | null = null;
   agentMenuInteractionState: AgentMenuInteractionState = "closed";
+  agentMenuSearchQuery = "";
   identityMenuTrigger: HTMLElement | null = null;
   private agentMenuHoverOpenTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private agentMenuHoverCloseTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
@@ -409,6 +410,7 @@ export class SidebarMenusController implements ReactiveController {
     this.closeCatalogViewMenu();
     this.closeIdentityMenu();
     this.agentMenuTrigger = trigger;
+    this.agentMenuSearchQuery = "";
     this.agentMenuFocusBeforeHover =
       interactionState === "open-hover" && document.activeElement instanceof HTMLElement
         ? document.activeElement
@@ -461,6 +463,10 @@ export class SidebarMenusController implements ReactiveController {
 
   handleAgentMenuPointerLeave() {
     this.scheduleAgentMenuHoverClose();
+  }
+
+  setAgentMenuSearchQuery(query: string) {
+    this.updateState("agentMenuSearchQuery", query);
   }
 
   restoreFocusAfterAgentMenuHoverOpen() {

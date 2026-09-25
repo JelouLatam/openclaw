@@ -5,6 +5,7 @@ export const agentChip = {
   newConversation: "New conversation",
   allAgents: "All agents",
   showAllAgents: "Show all agents",
+  searchAgentsLabel: "Search agents to switch to",
   showOneAgent: "Show one agent",
   workspaceMenuLabel: "Workspace menu",
   switchAgent: "Switch agent",
