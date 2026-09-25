@@ -29,6 +29,18 @@ export function assistantGroupIsForwardedBoundary(group: MessageGroup): boolean 
   });
 }
 
+// A `current`-session automation result is written by commitBackgroundResultToSession
+// with no input provenance, so the forwarded-cron check above never matches it.
+export function assistantGroupIsAutomationResult(group: MessageGroup): boolean {
+  return (
+    group.role.toLowerCase() === "assistant" &&
+    group.messages.some(({ message }) => {
+      const automation = asRecord(asRecord(message)?.openclawAutomation);
+      return automation?.kind === "cron" && Boolean(automation.jobId && automation.runId);
+    })
+  );
+}
+
 // Display attribution also accepts projected source metadata; turn ownership
 // above requires the original forwarded-input provenance.
 export function hasForwardedSource(group: MessageGroup): boolean {
@@ -54,6 +66,7 @@ export function chatItemStartsUserTurn(item: ChatItem | MessageGroup): boolean {
   return (
     role === "user" ||
     groupStartsProjectedTurnBoundary(item) ||
-    (role === "assistant" && assistantGroupIsForwardedBoundary(item))
+    (role === "assistant" &&
+      (assistantGroupIsForwardedBoundary(item) || assistantGroupIsAutomationResult(item)))
   );
 }

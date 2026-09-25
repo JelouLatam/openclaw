@@ -16,6 +16,7 @@ import { prepareMessagesForGrouping } from "./chat-thread-duplicates.ts";
 import { userTurnRunId } from "./chat-thread-items.ts";
 import { transcriptRunId } from "./chat-thread-run-identity.ts";
 import {
+  assistantGroupIsAutomationResult,
   assistantGroupIsForwardedBoundary,
   chatItemStartsUserTurn,
   hasForwardedSource,
@@ -227,7 +228,8 @@ function isTurnOutputGroup(item: TurnRenderItem): item is MessageGroup {
   return (
     item.kind === "group" &&
     (item.role === "assistant" || item.role === "tool") &&
-    !assistantGroupIsForwardedBoundary(item)
+    !assistantGroupIsForwardedBoundary(item) &&
+    !assistantGroupIsAutomationResult(item)
   );
 }
 
@@ -262,6 +264,7 @@ function isFinalReplyGroup(item: TurnRenderItem): item is MessageGroup {
   return (
     item.kind === "group" &&
     !item.isStreaming &&
+    !assistantGroupIsAutomationResult(item) &&
     assistantGroupCanOwnActiveRunStatus(item) &&
     assistantMessageKind(item.messages[0]?.message, item.visibleContent) !== "commentary"
   );
