@@ -332,7 +332,10 @@ the same plugin package. Standalone discovery keeps its own setup lifetime.
 Each worker retains one prepared catalog generation. Replacement releases the
 previous generation's registrations after its work settles. Successfully disposed
 registrations leave their plugin caches; unchanged registrations remain reusable
-across agent requests within the same inventory.
+across agent requests within the same inventory. A catalog request prepares
+registrations for the agent's known configured and credential providers
+together, so requests that alternate between those providers keep one discovery
+registry; only the requested providers run catalog hooks.
 Catalog workers use a 512 MiB V8 old-generation limit rather than inheriting the
 Gateway's default heap budget. Explicit process-wide heap flags override this
 limit; native and external allocations are outside it.
