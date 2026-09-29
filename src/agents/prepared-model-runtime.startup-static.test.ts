@@ -256,7 +256,7 @@ vi.mock("../logging/subsystem.js", () => ({
 const { getPreparedModelRuntimeSnapshot, refreshPreparedModelRuntimeSnapshots } =
   await import("./prepared-model-runtime.js");
 const { getPreparedModelCatalogSnapshot } = await import("./prepared-model-catalog.js");
-const { MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS } =
+const { MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS, PROVIDER_CATALOG_REFRESH_SPREAD_MS } =
   await import("./prepared-model-runtime.catalog-access.js");
 const { prepareScopedReadOnlyLiveModelCatalog, prepareScopedReadOnlyModelCatalog } =
   await import("./prepared-model-runtime.scoped-catalog.js");
@@ -640,6 +640,57 @@ describe("prepared model runtime Gateway catalog mode", () => {
     }
     expect(mocks.runPreparedModelCatalogWorker).toHaveBeenCalledTimes(builds);
     expect(MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS).toBeGreaterThanOrEqual(15 * 60_000);
+  }, 60_000);
+
+  it("spreads provider catalog expiry past the minimum interval", async () => {
+    const defaultWorker = mocks.runPreparedModelCatalogWorker.getMockImplementation()!;
+    const started = Date.now();
+    let now = started;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.99);
+    onTestFinished(() => {
+      clock.mockRestore();
+      random.mockRestore();
+      mocks.runPreparedModelCatalogWorker.mockImplementation(defaultWorker);
+    });
+    mocks.runPreparedModelCatalogWorker.mockImplementation(async () => {
+      mocks.providerExpiries = new Map([["openai", now - 1]]);
+      return {
+        entries: [{ provider: "openai", id: "gpt-5.5", name: "GPT-5.5" }],
+        routeVariants: [],
+      };
+    });
+    const config = { agents: { defaults: { model: { primary: "openai/gpt-5.5" } } } };
+    await refreshPreparedModelRuntimeSnapshots(config, {
+      gatewayLifecycle: true,
+      catalogMode: "static",
+    });
+    const snapshot = getPreparedModelRuntimeSnapshot({
+      agentId: "default",
+      config,
+      agentDir: "/tmp/prepared-static-agent",
+      inheritedAuthDir: "/tmp/prepared-static-agent",
+      workspaceDir: "/tmp/prepared-static-workspace",
+    });
+    await snapshot!.loadFullModelCatalog!();
+    const builds = mocks.runPreparedModelCatalogWorker.mock.calls.length;
+    const readSettled = async () => {
+      for (let read = 0; read < 5; read++) {
+        await snapshot!.loadFullModelCatalog!();
+        await new Promise((resolve) => {
+          setTimeout(resolve, 25);
+        });
+      }
+    };
+
+    now =
+      started + MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS + PROVIDER_CATALOG_REFRESH_SPREAD_MS / 2;
+    await readSettled();
+    expect(mocks.runPreparedModelCatalogWorker).toHaveBeenCalledTimes(builds);
+
+    now = started + MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS + PROVIDER_CATALOG_REFRESH_SPREAD_MS;
+    await readSettled();
+    expect(mocks.runPreparedModelCatalogWorker.mock.calls.length).toBeGreaterThan(builds);
   }, 60_000);
 
   it("publishes configured turn facts without eagerly building a full catalog", async () => {

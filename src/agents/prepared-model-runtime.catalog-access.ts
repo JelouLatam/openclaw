@@ -59,6 +59,9 @@ const MODEL_CATALOG_FOREGROUND_WAIT_MS = 5_000;
 // All agents share one catalog worker, so provider TTLs (~60 s) times the agent count must
 // stay below its capacity; 51 agents at 60 s kept it at one full core with no traffic.
 export const MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS = 15 * 60_000;
+// Agents whose catalogs were built together (every agent at boot) would otherwise expire
+// together and queue the whole fleet on the worker at once, every interval.
+export const PROVIDER_CATALOG_REFRESH_SPREAD_MS = 15 * 60_000;
 
 export function createFullModelCatalogAccess(
   params: PreparedModelRuntimeCatalogAccessParams,
@@ -465,7 +468,9 @@ export function createFullModelCatalogAccess(
                 ? {
                     expiresAt: Math.max(
                       expiresAt,
-                      Date.now() + MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS,
+                      Date.now() +
+                        MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS +
+                        Math.floor(Math.random() * PROVIDER_CATALOG_REFRESH_SPREAD_MS),
                     ),
                   }
                 : {}),
