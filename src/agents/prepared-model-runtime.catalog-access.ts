@@ -58,6 +58,8 @@ const limitFullModelCatalogBuild = pLimit(MAX_CONCURRENT_FULL_MODEL_CATALOG_BUIL
 const MODEL_CATALOG_FOREGROUND_WAIT_MS = 5_000;
 // The shared catalog worker cannot keep up with short provider TTLs across many agents.
 export const MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS = 15 * 60_000;
+// Agents built together at startup should not renew their catalogs together.
+export const PROVIDER_CATALOG_REFRESH_SPREAD_MS = 15 * 60_000;
 
 export function createFullModelCatalogAccess(
   params: PreparedModelRuntimeCatalogAccessParams,
@@ -364,7 +366,9 @@ export function createFullModelCatalogAccess(
                 ? {
                     expiresAt: Math.max(
                       expiresAt,
-                      Date.now() + MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS,
+                      Date.now() +
+                        MIN_PROVIDER_CATALOG_REFRESH_INTERVAL_MS +
+                        Math.floor(Math.random() * PROVIDER_CATALOG_REFRESH_SPREAD_MS),
                     ),
                   }
                 : {}),
