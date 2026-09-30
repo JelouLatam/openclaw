@@ -9,6 +9,7 @@ export const TERMINAL_PANEL_TOGGLE_EVENT = "openclaw:terminal-toggle";
 export const TERMINAL_PANEL_DOCK_BOTTOM_EVENT = "openclaw:terminal-dock-bottom";
 export const BROWSER_PANEL_TOGGLE_EVENT = "openclaw:browser-toggle";
 export const DESKTOP_PANEL_TOGGLE_EVENT = "openclaw:desktop-toggle";
+export const PLUGIN_PANEL_TOGGLE_EVENT = "openclaw:plugin-panel-toggle";
 export const PORTAL_PANEL_TOGGLE_EVENT = "openclaw:portal-toggle";
 export const HOME_PANEL_TOGGLE_EVENT = "openclaw:home-toggle";
 export const CUSTODIAN_PANEL_TOGGLE_EVENT = "openclaw:custodian-toggle";
@@ -58,6 +59,14 @@ export type PortalPanelToggleDetail = {
   open?: boolean;
   portalId?: string;
   environmentId?: string;
+};
+
+/** A plugin panel is addressed by its fully-qualified sidebar slot. */
+export type PluginPanelToggleDetail = {
+  agentId: string;
+  open?: boolean;
+  sessionKey: string;
+  slot: `plugin:${string}/${string}`;
 };
 
 export type PanelToggleElement = HTMLElement & {

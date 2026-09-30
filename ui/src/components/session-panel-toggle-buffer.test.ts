@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clearSessionPanelToggle,
   rememberSessionPanelToggle,
+  takePluginSessionPanelToggle,
   takeSessionPanelToggle,
 } from "./session-panel-toggle-buffer.ts";
 
@@ -51,5 +52,24 @@ describe("session panel toggle buffer", () => {
     clearSessionPanelToggle("browser", older);
 
     expect(takeSessionPanelToggle("browser")).toBe(newer);
+  });
+
+  it("keeps a plugin-panel intent with its exact conversation", () => {
+    const event = new CustomEvent("openclaw:plugin-panel-toggle", {
+      detail: {
+        open: true,
+        agentId: "writer",
+        sessionKey: "global",
+        slot: "plugin:android-farm/android",
+      },
+    });
+    rememberSessionPanelToggle("plugin:android-farm/android", event);
+
+    expect(takePluginSessionPanelToggle("global", "main")).toBeNull();
+    expect(takePluginSessionPanelToggle("agent:main:another-turn", "writer")).toBeNull();
+    expect(takePluginSessionPanelToggle("global", "writer")).toEqual({
+      slot: "plugin:android-farm/android",
+      event,
+    });
   });
 });

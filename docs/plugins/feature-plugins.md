@@ -146,6 +146,12 @@ Its id must match the plugin manifest. Register contributions through
 | `registerWidget`                        | Native dashboard widget views.                                                                                                          |
 | `registerReplacement`                   | `workspace`, `session-list`, `composer`, `transcript`, or `tool-result`.                                                                |
 
+After registering a session panel, a plugin can call
+`host.ui.openPanel({ id, sessionKey, agentId })` from its own view. The host
+opens the exact conversation and agent owner first, then hands the request to
+that conversation's native sidebar; `id` must name a panel registered by the
+same live plugin activation. The panel's selected resource remains plugin-owned.
+
 For a dashboard widget, also register a backend
 `api.session.controls.registerControlUiDescriptor` with `surface: "widget"`,
 the same widget `id`, and its `requiredScopes`. The Gateway advertises widget
