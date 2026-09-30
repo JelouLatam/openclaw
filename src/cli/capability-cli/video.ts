@@ -299,7 +299,7 @@ export function registerVideoCapabilityCommands(capability: Command): void {
     .option("--json", "Output JSON", false)
     .action((opts, command) =>
       runCapabilityCommand(opts.json, formatEnvelopeForText, async () => {
-        const { resolveCapabilityAgentOption } = await import("./shared.js");
+        const { parseOptionalTimeoutMs, resolveCapabilityAgentOption } = await import("./shared.js");
         return runVideoDescribe({
           file: String(opts.file),
           agent: resolveCapabilityAgentOption(command, opts.agent),
