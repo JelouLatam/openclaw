@@ -5,6 +5,8 @@ import type { GatewayBrowserClient } from "../api/gateway.ts";
 import type { AgentsListResult } from "../api/types.ts";
 import { createAgentSelectionCapability } from "../app/agent-selection.ts";
 import type { ApplicationContext } from "../app/context.ts";
+import { PLUGIN_PANEL_TOGGLE_EVENT } from "../components/panel-toggle-contract.ts";
+import { takePluginSessionPanelToggle } from "../components/session-panel-toggle-buffer.ts";
 import { i18n } from "../i18n/index.ts";
 import { createAgentCapability } from "../lib/agents/index.ts";
 import {
@@ -23,16 +25,29 @@ function createRosterHost(request: GatewayBrowserClient["request"]) {
   const sessions = createTestSessionCapability(gateway);
   const context = { gateway, agents, sessions } as unknown as ApplicationContext;
   const abort = new AbortController();
-  const owner = { client, abort, descriptor: { pluginId: "review" }, disposers: new Set() } as Omit<
-    ControlUiPluginOwner,
-    "host"
-  >;
+  const owner = {
+    client,
+    abort,
+    descriptor: { pluginId: "review" },
+    disposers: new Set(),
+    contributions: {
+      pages: new Map(),
+      navigation: new Map(),
+      panels: new Map(),
+      actions: new Map(),
+      accessories: new Map(),
+      widgets: new Map(),
+      replacements: new Map(),
+    },
+    selections: new Map(),
+  } as Omit<ControlUiPluginOwner, "host">;
   const runtime = new ControlUiPluginRuntime(() => context);
   runtime.start();
   return {
     context,
     host: createControlUiPluginHost(() => context, runtime, owner),
     runtime,
+    owner,
     agents,
     sessions,
     dispose() {
@@ -532,4 +547,73 @@ describe("native UI page navigation", () => {
       }
     },
   );
+});
+
+describe("native plugin session panels", () => {
+  it("opens only an owned panel after handing off the exact conversation", () => {
+    const fixture = createRosterHost(vi.fn());
+    const selection = createAgentSelectionCapability(
+      {
+        ...fixture.context.gateway,
+        connection: { gatewayUrl: "ws://localhost:18789" },
+      },
+      fixture.agents,
+    );
+    const navigate = vi.fn();
+    const setSessionKey = vi.fn();
+    const signal = new AbortController().signal;
+    fixture.owner.contributions.panels.set("android", {
+      value: { id: "android", label: "Android", mount: () => undefined },
+      signal,
+    });
+    Object.assign(fixture.context, { basePath: "", agentSelection: selection, navigate });
+    Object.assign(fixture.context.gateway, { setSessionKey });
+    const received = vi.fn<(event: Event) => void>();
+    window.addEventListener(PLUGIN_PANEL_TOGGLE_EVENT, received);
+    try {
+      expect(() =>
+        fixture.host.ui.openPanel({
+          id: "other-plugin-panel",
+          sessionKey: "agent:writer:android-turn",
+          agentId: "writer",
+        }),
+      ).toThrow("own registered UI panel");
+      expect(navigate).not.toHaveBeenCalled();
+
+      fixture.host.ui.openPanel({
+        id: "android",
+        sessionKey: "agent:writer:android-turn",
+        agentId: "writer",
+      });
+
+      expect(selection.state.selectedId).toBe("writer");
+      expect(setSessionKey).toHaveBeenCalledWith("agent:writer:android-turn");
+      expect(navigate).toHaveBeenCalledWith(
+        "chat",
+        expect.objectContaining({ pathname: "/chat/writer/android-turn" }),
+      );
+      expect(received).toHaveBeenCalledOnce();
+      expect((received.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
+        agentId: "writer",
+        open: true,
+        sessionKey: "agent:writer:android-turn",
+        slot: "plugin:review/android",
+      });
+      expect(takePluginSessionPanelToggle("agent:writer:android-turn", "writer")?.slot).toBe(
+        "plugin:review/android",
+      );
+
+      fixture.owner.abort.abort();
+      expect(() =>
+        fixture.host.ui.openPanel({
+          id: "android",
+          sessionKey: "agent:writer:another-turn",
+          agentId: "writer",
+        }),
+      ).toThrow("activation has ended");
+    } finally {
+      window.removeEventListener(PLUGIN_PANEL_TOGGLE_EVENT, received);
+      fixture.dispose();
+    }
+  });
 });

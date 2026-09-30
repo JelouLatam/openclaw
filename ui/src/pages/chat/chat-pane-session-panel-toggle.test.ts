@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ControlUiLinkReaderDescriptor } from "../../../../src/shared/control-ui-link-reader.js";
 import { createDeferred } from "../../../../test/helpers/promise.js";
-import { LINK_READER_PANEL_TOGGLE_EVENT } from "../../components/panel-toggle-contract.ts";
+import {
+  LINK_READER_PANEL_TOGGLE_EVENT,
+  PLUGIN_PANEL_TOGGLE_EVENT,
+} from "../../components/panel-toggle-contract.ts";
 import {
   rememberSessionPanelToggle,
   type SessionPanelToggleSlot,
@@ -208,4 +211,42 @@ describe("session link-reader intent delivery", () => {
       expect(f.deliverPanelEvent).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("session plugin-panel intent delivery", () => {
+  it("opens only the exact conversation's plugin panel", () => {
+    const f = fixture();
+    const event = new CustomEvent(PLUGIN_PANEL_TOGGLE_EVENT, {
+      detail: {
+        agentId: "main",
+        open: true,
+        sessionKey: "session-b",
+        slot: "plugin:android-farm/android",
+      },
+    });
+    expect(f.controller.handlePlugin(event)).toBe(false);
+    expect(f.updateSidebarLayout).not.toHaveBeenCalled();
+
+    f.state.sessionKey = "session-b";
+    expect(f.controller.handlePlugin(event)).toBe(true);
+    expect(f.state.sidebarLayout.columns[0]?.panels).toEqual([
+      { id: "plugin:android-farm/android", slot: "plugin:android-farm/android" },
+    ]);
+  });
+
+  it("does not let another agent claim a global-session intent", () => {
+    const f = fixture();
+    f.state.sessionKey = "global";
+    const event = new CustomEvent(PLUGIN_PANEL_TOGGLE_EVENT, {
+      detail: {
+        agentId: "writer",
+        open: true,
+        sessionKey: "global",
+        slot: "plugin:android-farm/android",
+      },
+    });
+
+    expect(f.controller.handlePlugin(event)).toBe(false);
+    expect(f.updateSidebarLayout).not.toHaveBeenCalled();
+  });
 });

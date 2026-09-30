@@ -5,12 +5,15 @@ import {
   LINK_READER_PANEL_TOGGLE_EVENT,
   DESKTOP_PANEL_TOGGLE_EVENT,
   PORTAL_PANEL_TOGGLE_EVENT,
+  PLUGIN_PANEL_TOGGLE_EVENT,
   TERMINAL_PANEL_DOCK_BOTTOM_EVENT,
   TERMINAL_PANEL_TOGGLE_EVENT,
 } from "../../components/panel-toggle-contract.ts";
 import {
   clearSessionPanelToggle,
   panelToggleSessionKey,
+  pluginPanelToggleAgentId,
+  takePluginSessionPanelToggle,
   takeSessionPanelToggle,
   type SessionPanelToggleSlot,
 } from "../../components/session-panel-toggle-buffer.ts";
@@ -70,6 +73,8 @@ export class ChatPaneSessionPanelToggleController {
       window.addEventListener(eventName, listener);
       return () => window.removeEventListener(eventName, listener);
     });
+    const handlePlugin = (event: Event) => this.handlePlugin(event);
+    window.addEventListener(PLUGIN_PANEL_TOGGLE_EVENT, handlePlugin);
     const handleTerminalDockBottom = () => {
       const owner = this.options.current();
       if (owner) {
@@ -79,9 +84,37 @@ export class ChatPaneSessionPanelToggleController {
     window.addEventListener(TERMINAL_PANEL_DOCK_BOTTOM_EVENT, handleTerminalDockBottom);
     return () => {
       cleanups.forEach((cleanup) => cleanup());
+      window.removeEventListener(PLUGIN_PANEL_TOGGLE_EVENT, handlePlugin);
       window.removeEventListener(TERMINAL_PANEL_DOCK_BOTTOM_EVENT, handleTerminalDockBottom);
       this.options.pending.clear();
     };
+  }
+
+  /** The plugin host has already verified ownership; this pane verifies the exact session. */
+  handlePlugin(event: Event): boolean {
+    const owner = this.options.current();
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    const slot = typeof detail?.slot === "string" ? detail.slot : null;
+    const requestedSession = panelToggleSessionKey(event);
+    const requestedAgentId = pluginPanelToggleAgentId(event);
+    if (
+      !owner ||
+      !slot?.startsWith("plugin:") ||
+      !requestedSession ||
+      !requestedAgentId ||
+      requestedAgentId !== resolveChatAgentId(owner.state) ||
+      !areUiSessionKeysEquivalent(requestedSession, owner.state.sessionKey)
+    ) {
+      return false;
+    }
+    const pluginSlot = slot as `plugin:${string}/${string}`;
+    clearSessionPanelToggle(pluginSlot, event);
+    if (detail.open === false) {
+      this.options.updateSidebarLayout(closeSlot(owner.state.sidebarLayout, pluginSlot));
+      return true;
+    }
+    this.options.updateSidebarLayout(openSlot(owner.state.sidebarLayout, pluginSlot));
+    return true;
   }
 
   handle(slot: SessionPanelToggleSlot, tagName: PanelTagName, event: Event): boolean {
@@ -229,6 +262,11 @@ export class ChatPaneSessionPanelToggleController {
       while ((event = takeSessionPanelToggle(slot, owner.state.sessionKey))) {
         this.handle(slot, tagName, event);
       }
+    }
+    const agentId = resolveChatAgentId(owner.state);
+    let plugin: ReturnType<typeof takePluginSessionPanelToggle>;
+    while (agentId && (plugin = takePluginSessionPanelToggle(owner.state.sessionKey, agentId))) {
+      this.handlePlugin(plugin.event);
     }
   }
 }

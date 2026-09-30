@@ -8,13 +8,19 @@ import { isRouteId, pathForRoute, pluginTabLocation } from "../app-route-paths.t
 import { selectApplicationSession } from "../app/agent-selection.ts";
 import type { ApplicationContext } from "../app/context.ts";
 import { hasOperatorReadAccess, readGatewayOperatorAccess } from "../app/operator-access.ts";
+import { PLUGIN_PANEL_TOGGLE_EVENT } from "../components/panel-toggle-contract.ts";
+import { rememberSessionPanelToggle } from "../components/session-panel-toggle-buffer.ts";
 import { i18n } from "../i18n/index.ts";
 import { redactToolPayloadText } from "../lib/browser-redact.ts";
 import {
   resolveSessionPreferredFaceForKey,
+  resolveSessionNavigationAgentId,
   sessionNavigationTarget,
 } from "../lib/sessions/route-navigation.ts";
-import { normalizeSessionKeyForUiComparison } from "../lib/sessions/session-key.ts";
+import {
+  normalizeAgentId,
+  normalizeSessionKeyForUiComparison,
+} from "../lib/sessions/session-key.ts";
 import { createControlUiComponents } from "./control-ui-components.ts";
 import type { ControlUiPluginOwner, ControlUiPluginRuntime } from "./control-ui-runtime.ts";
 
@@ -79,6 +85,25 @@ export function createControlUiPluginHost(
       pathname: suffix ? `${path}/${suffix}` : path,
       search: search.size ? `?${search}` : "",
     };
+  };
+  const openSession = ({ sessionKey, agentId }: { sessionKey: string; agentId?: string }) => {
+    const context = current();
+    const face = resolveSessionPreferredFaceForKey(context, sessionKey, agentId);
+    const target = sessionNavigationTarget({
+      context,
+      face,
+      sessionKey,
+      agentId,
+      preferenceDerivedFace: true,
+      exactKey: true,
+    });
+    selectApplicationSession({
+      selection: context.agentSelection,
+      gateway: context.gateway,
+      sessionKey,
+      agentId,
+    });
+    context.navigate(face, target.options);
   };
   return {
     apiVersion: 1,
@@ -191,25 +216,7 @@ export function createControlUiPluginHost(
         });
         return { refresh, dispose };
       },
-      open({ sessionKey, agentId }) {
-        const context = current();
-        const face = resolveSessionPreferredFaceForKey(context, sessionKey, agentId);
-        const target = sessionNavigationTarget({
-          context,
-          face,
-          sessionKey,
-          agentId,
-          preferenceDerivedFace: true,
-          exactKey: true,
-        });
-        selectApplicationSession({
-          selection: context.agentSelection,
-          gateway: context.gateway,
-          sessionKey,
-          agentId,
-        });
-        context.navigate(face, target.options);
-      },
+      open: openSession,
       create: (params) => call((context) => context.sessions.create(params)),
       patch: ({ sessionKey, agentId }, patch) =>
         call(async (context) => {
@@ -277,6 +284,31 @@ export function createControlUiPluginHost(
       registerPage: (value) => runtime.register(owner, "pages", value),
       registerNavigation: (value) => runtime.register(owner, "navigation", value),
       registerPanel: (value) => runtime.register(owner, "panels", value),
+      openPanel({ id, sessionKey, agentId }) {
+        const context = current();
+        if (!owner.contributions.panels.has(id)) {
+          throw new Error("A plugin can open only its own registered UI panel.");
+        }
+        const targetKey = sessionKey.trim();
+        if (!targetKey) {
+          throw new Error("A plugin panel requires a session key.");
+        }
+        const targetAgentId = normalizeAgentId(resolveSessionNavigationAgentId(context, agentId));
+        const event = new CustomEvent(PLUGIN_PANEL_TOGGLE_EVENT, {
+          detail: {
+            agentId: targetAgentId,
+            open: true,
+            sessionKey: targetKey,
+            slot: `plugin:${owner.descriptor.pluginId}/${id}`,
+          },
+        });
+        // Store the intent before navigation: the mounted chat pane is the only
+        // owner that can apply it, and may not exist until the route changes.
+        rememberSessionPanelToggle(`plugin:${owner.descriptor.pluginId}/${id}`, event);
+        openSession({ sessionKey: targetKey, agentId: targetAgentId });
+        window.dispatchEvent(event);
+        current();
+      },
       registerAction: (value) => runtime.register(owner, "actions", value),
       registerAccessory: (value) => runtime.register(owner, "accessories", value),
       registerWidget: (value) => runtime.register(owner, "widgets", value),
