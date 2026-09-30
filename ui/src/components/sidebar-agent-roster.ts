@@ -34,7 +34,6 @@ import "../styles/sidebar-agent-roster.css";
 registerAgentsHomeEnglish();
 type RosterHost = AppSidebarRenderHost &
   SessionListHost & {
-    loadMoreSidebarSessions(): Promise<void>;
     readonly rosterLayout: SidebarRosterLayout;
   };
 type RosterAvatarCard = Parameters<typeof renderAgentIdentityAvatar>[0] & { name: string };

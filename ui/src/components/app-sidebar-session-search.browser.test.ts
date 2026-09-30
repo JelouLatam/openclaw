@@ -108,9 +108,13 @@ describe.runIf("__vitest_browser__" in globalThis)("sidebar session search", () 
     );
     expect(localStorage.getItem(LAYOUT_KEY)).toBe("grouped");
     expect(sessionKeys(first.sidebar.querySelector('[data-agent-group="working"]')!)).toEqual([
-      "agent:working:pinned",
       "agent:working:deploy",
     ]);
+    expect(
+      first.sidebar
+        .querySelector('[data-session-key="agent:working:pinned"]')
+        ?.closest("[data-agent-group]"),
+    ).toBeNull();
 
     document.body.replaceChildren();
     const second = await mountSearch({ roster: true });
