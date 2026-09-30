@@ -258,6 +258,8 @@ export type ControlUiHost = {
     registerPanel: (panel: ControlUiPanel) => ControlUiDisposer;
     /** Open one of this plugin's registered panels in the target conversation's native sidebar. */
     openPanel: (target: ControlUiPanelTarget) => void;
+    /** Close one of this plugin's registered panels in the target conversation's native sidebar. */
+    closePanel: (target: ControlUiPanelTarget) => void;
     registerAction: (action: ControlUiAction) => ControlUiDisposer;
     registerAccessory: (accessory: ControlUiAccessory) => ControlUiDisposer;
     registerWidget: (widget: ControlUiWidget) => ControlUiDisposer;
