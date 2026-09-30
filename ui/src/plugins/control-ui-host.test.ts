@@ -603,6 +603,27 @@ describe("native plugin session panels", () => {
         "plugin:review/android",
       );
 
+      expect(() =>
+        fixture.host.ui.closePanel({
+          id: "other-plugin-panel",
+          sessionKey: "agent:writer:android-turn",
+          agentId: "writer",
+        }),
+      ).toThrow("own registered UI panel");
+      fixture.host.ui.closePanel({
+        id: "android",
+        sessionKey: "agent:writer:android-turn",
+        agentId: "writer",
+      });
+      expect(received).toHaveBeenCalledTimes(2);
+      expect((received.mock.calls[1]?.[0] as CustomEvent).detail).toEqual({
+        agentId: "writer",
+        open: false,
+        sessionKey: "agent:writer:android-turn",
+        slot: "plugin:review/android",
+      });
+      expect(navigate).toHaveBeenCalledTimes(1);
+
       fixture.owner.abort.abort();
       expect(() =>
         fixture.host.ui.openPanel({

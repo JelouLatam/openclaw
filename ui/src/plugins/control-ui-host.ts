@@ -309,6 +309,25 @@ export function createControlUiPluginHost(
         window.dispatchEvent(event);
         current();
       },
+      closePanel({ id, sessionKey, agentId }) {
+        const context = current();
+        if (!owner.contributions.panels.has(id)) {
+          throw new Error("A plugin can close only its own registered UI panel.");
+        }
+        const targetKey = sessionKey.trim();
+        if (!targetKey) {
+          throw new Error("A plugin panel requires a session key.");
+        }
+        const targetAgentId = normalizeAgentId(resolveSessionNavigationAgentId(context, agentId));
+        window.dispatchEvent(new CustomEvent(PLUGIN_PANEL_TOGGLE_EVENT, {
+          detail: {
+            agentId: targetAgentId,
+            open: false,
+            sessionKey: targetKey,
+            slot: `plugin:${owner.descriptor.pluginId}/${id}`,
+          },
+        }));
+      },
       registerAction: (value) => runtime.register(owner, "actions", value),
       registerAccessory: (value) => runtime.register(owner, "accessories", value),
       registerWidget: (value) => runtime.register(owner, "widgets", value),
