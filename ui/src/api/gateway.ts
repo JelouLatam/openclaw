@@ -31,6 +31,10 @@ import {
   loadDeviceAuthToken,
   storeDeviceAuthToken,
 } from "../lib/nodes/index.ts";
+import {
+  filterControlUiSessionResponse,
+  readHiddenSessionKeyPrefixes,
+} from "../lib/sessions/control-ui-display-filter.ts";
 import { generateUUID } from "../lib/uuid.ts";
 import {
   BROWSER_WEBSOCKET_SECURITY_ERROR_CODE,
@@ -150,6 +154,8 @@ async function deriveLegacyV4RecoveryScope(material: string | undefined): Promis
 
 export class GatewayBrowserClient {
   private readonly client: GatewayProtocolClient<ConnectPlan>;
+  private readonly hiddenSessionKeyPrefixes = readHiddenSessionKeyPrefixes();
+  private canAdmin = false;
   private readonly chatEvents = new GatewayChatEvents((reason) => this.forceReconnect(reason));
   private maxPayloadBytes: number | undefined;
   private scopeUpgradeRuntime: Promise<GatewayScopeUpgrade> | null = null;
@@ -215,6 +221,7 @@ export class GatewayBrowserClient {
       },
       resolveClose: (context) => this.resolveClose(context),
       onClose: (context, decision) => {
+        this.canAdmin = false;
         this.nativeAuthAbort?.abort();
         this.chatEvents.clear();
         this.recovery = { ...this.recovery, generation: context.generation + 1, resolved: false };
@@ -388,6 +395,7 @@ export class GatewayBrowserClient {
   }
 
   private handleConnectHello(hello: GatewayHelloOk, plan: ConnectPlan) {
+    this.canAdmin = hello.auth?.scopes?.includes("operator.admin") === true;
     // Publish this connection's identity before listeners can capture recovery intent.
     // A legacy hello must not retain its predecessor while its digest is pending.
     this.recovery.value = hello.auth?.recoveryScope ?? "";
@@ -549,7 +557,16 @@ export class GatewayBrowserClient {
     params?: unknown,
     options?: GatewayProtocolRequestOptions,
   ): Promise<T> {
-    return this.chatEvents.request<T>(this.client, method, params, options);
+    return this.chatEvents
+      .request<T>(this.client, method, params, options)
+      .then((result) =>
+        filterControlUiSessionResponse(
+          method,
+          result,
+          this.hiddenSessionKeyPrefixes,
+          this.canAdmin,
+        ),
+      );
   }
 
   async requestScopeUpgrade(options: { onPending?: (requestId: string) => void } = {}) {

@@ -167,6 +167,11 @@ export const GatewayConfigSchema = z
           .optional(),
         /** Show the Discord community invitation in this Gateway's Control UI (default true). */
         communityInvite: z.boolean().optional(),
+        /** Presentation only: omit matching session keys from non-admin Control UI lists. */
+        hiddenSessionKeyPrefixesForNonAdmins: z
+          .array(z.string().trim().min(1).max(256))
+          .max(32)
+          .optional(),
         /** Seed fresh drafts from configured model/reasoning instead of remembered choices. */
         newSessionModelDefaults: z.enum(["last-used", "configured"]).optional(),
         /** Optional service credential used only for Control UI GitHub previews and discovery. */

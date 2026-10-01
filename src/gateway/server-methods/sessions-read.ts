@@ -25,6 +25,7 @@ import {
   normalizeAgentId,
   parseAgentSessionKey,
 } from "../../routing/session-key.js";
+import { GATEWAY_CLIENT_NAMES } from "../../utils/message-channel.js";
 import { hasOperatorBoundary } from "../operator-role-policy.js";
 import { SessionMutationAuthorizationChangedError } from "../session-mutation-authorization-error.js";
 import { resolveRequestedSessionAgentId as resolveRequestedGlobalAgentId } from "../session-request-agent.js";
@@ -53,8 +54,18 @@ import { sessionMaintenanceHandlers } from "./sessions-maintenance.js";
 import { sessionByKeyReadHandlers } from "./sessions-read-by-key.js";
 import { searchProjectedSessionTranscripts } from "./sessions-search-projected.js";
 import { resolveSessionSearchScope } from "./sessions-search-scope.js";
-import type { GatewayRequestHandlers } from "./types.js";
+import type { GatewayClient, GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
+
+function hiddenSessionKeyPrefixesForControlUi(
+  context: GatewayRequestContext,
+  client: GatewayClient | null | undefined,
+): readonly string[] {
+  return client?.connect?.client?.id === GATEWAY_CLIENT_NAMES.CONTROL_UI &&
+    !isGatewayAdmin(client ?? null)
+    ? (context.getRuntimeConfig().gateway?.controlUi?.hiddenSessionKeyPrefixesForNonAdmins ?? [])
+    : [];
+}
 
 export const sessionReadHandlers: GatewayRequestHandlers = {
   "sessions.search": async ({ params, respond, context, client, sessionMutationAuthorization }) => {
@@ -74,6 +85,7 @@ export const sessionReadHandlers: GatewayRequestHandlers = {
           scope: params.scope,
           context,
           client: client ?? null,
+          hiddenSessionKeyPrefixes: hiddenSessionKeyPrefixesForControlUi(context, client),
           onResult: (result) => {
             sessionMutationAuthorization?.assertCurrent();
             respond(true, result);
@@ -102,12 +114,17 @@ export const sessionReadHandlers: GatewayRequestHandlers = {
       const roleVisibilityFilter = hasOperatorBoundary(client, policyConfig)
         ? createSessionListEntryFilter({ client, cfg: policyConfig })
         : undefined;
-      const restrictVisibility = restrictIncognito || Boolean(roleVisibilityFilter);
+      const hiddenSessionKeyPrefixes = hiddenSessionKeyPrefixesForControlUi(context, client);
+      const restrictVisibility =
+        restrictIncognito || Boolean(roleVisibilityFilter) || hiddenSessionKeyPrefixes.length > 0;
       const targetDiscoveryCache: GatewaySessionStoreDiscoveryCache = new Map();
       const canSearchSessionKey = (
         sessionKey: string,
         prepared?: ReturnType<typeof prepareSessionSharingTargets>[number],
       ) => {
+        if (hiddenSessionKeyPrefixes.some((prefix) => sessionKey.startsWith(prefix))) {
+          return false;
+        }
         if (
           isIncognitoSessionKey(sessionKey) &&
           !canAccessIncognitoSession({ cfg, client: client ?? null, sessionKey, agentId })
@@ -273,6 +290,7 @@ export const sessionReadHandlers: GatewayRequestHandlers = {
       opts: params,
       context,
       client,
+      hiddenSessionKeyPrefixes: hiddenSessionKeyPrefixesForControlUi(context, client),
       diagnostics,
       onResult: (result) => {
         args.sessionMutationAuthorization?.assertCurrent();

@@ -13,6 +13,8 @@ export const CONTROL_UI_BASE_PATH_ATTRIBUTE = "data-openclaw-control-ui-base-pat
 export const CONTROL_UI_TERMINAL_ENABLED_ATTRIBUTE = "data-openclaw-terminal-enabled";
 
 export const CONTROL_UI_ENVIRONMENT_ATTRIBUTE = "data-openclaw-environment";
+export const CONTROL_UI_HIDDEN_SESSION_PREFIXES_ATTRIBUTE =
+  "data-openclaw-hidden-session-prefixes-for-non-admins";
 export const CONTROL_UI_ENVIRONMENT_COLORS = [
   "teal",
   "amber",

@@ -1,6 +1,7 @@
 import { gatewayCredentialScope } from "@openclaw/gateway-client/browser";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { GatewaySessionRow } from "../../api/types.ts";
+import { readHiddenSessionKeyPrefixes } from "./control-ui-display-filter.ts";
 import type { SessionGateway, SessionListOptions, SessionState } from "./session-capability.ts";
 import { isPrimarySessionListQuery } from "./session-list-query.ts";
 import { normalizeManagedSessionListQuery } from "./session-requests.ts";
@@ -206,6 +207,11 @@ export async function readSessionRoster(
   generation: number,
 ): Promise<SessionRosterRecord | null> {
   if (generation !== sessionRosterCacheGeneration) {
+    return null;
+  }
+  // A warm roster loads before the Gateway tells us whether this operator is an admin.
+  // Skip it when a role-dependent display rule is active, then use the live scoped list.
+  if (readHiddenSessionKeyPrefixes().length > 0) {
     return null;
   }
   const database = await openSessionRosterDatabase();

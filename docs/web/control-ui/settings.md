@@ -192,6 +192,29 @@ for each Gateway. It does not change shared Gateway configuration or sync across
 devices. Clearing site data resets it. Internal OpenClaw navigation and downloads
 are unchanged.
 
+## Hide session rows from non-admins
+
+`gateway.controlUi.hiddenSessionKeyPrefixesForNonAdmins` omits matching keys from
+the session lists and searches displayed by this Gateway's Control UI when the
+connected operator does not have `operator.admin`. For example:
+
+```json5
+{
+  gateway: {
+    controlUi: {
+      hiddenSessionKeyPrefixesForNonAdmins: ["agent:assistant:whatsapp:direct:"],
+    },
+  },
+}
+```
+
+The prefixes are exact, case-sensitive starts of session keys. Reload the page
+after changing them. The Control UI omits matching rows before paginating
+session lists or limiting transcript search results, and skips its warm roster cache until the operator's
+scope is known. This is a presentation rule: direct session links, other Gateway
+clients, agent tools, channel routing, and existing access checks are unaffected.
+Use session sharing and operator roles when access must be restricted.
+
 ## Session sources
 
 Open the sidebar's **Filter & sort** menu and choose **Session sources…** to
