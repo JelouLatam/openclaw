@@ -395,7 +395,7 @@ export class GatewayBrowserClient {
   }
 
   private handleConnectHello(hello: GatewayHelloOk, plan: ConnectPlan) {
-    this.canAdmin = hello.auth?.scopes?.includes("operator.admin") === true;
+    this.canAdmin = hello.auth?.scopes?.includes("operator.admin") ?? false;
     // Publish this connection's identity before listeners can capture recovery intent.
     // A legacy hello must not retain its predecessor while its digest is pending.
     this.recovery.value = hello.auth?.recoveryScope ?? "";
