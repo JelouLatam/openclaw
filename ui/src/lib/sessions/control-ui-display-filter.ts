@@ -34,27 +34,31 @@ export function filterControlUiSessionResponse<T>(
   }
   if (method === "sessions.list" && Array.isArray(result.sessions)) {
     const sessions = result.sessions.filter((row) => !isRecord(row) || !hidden(row.key, prefixes));
-    return { ...result, sessions, count: sessions.length } as T;
+    return Object.assign({ ...result }, { sessions, count: sessions.length });
   }
   if (method === "sessions.search") {
     if (!Array.isArray(result.sessions) && !Array.isArray(result.results)) {
       return result;
     }
-    return {
-      ...result,
-      ...(Array.isArray(result.sessions)
-        ? {
-            sessions: result.sessions.filter((row) => !isRecord(row) || !hidden(row.key, prefixes)),
-          }
-        : {}),
-      ...(Array.isArray(result.results)
-        ? {
-            results: result.results.filter(
-              (hit) => !isRecord(hit) || !hidden(hit.sessionKey, prefixes),
-            ),
-          }
-        : {}),
-    } as T;
+    return Object.assign(
+      { ...result },
+      {
+        ...(Array.isArray(result.sessions)
+          ? {
+              sessions: result.sessions.filter(
+                (row) => !isRecord(row) || !hidden(row.key, prefixes),
+              ),
+            }
+          : {}),
+        ...(Array.isArray(result.results)
+          ? {
+              results: result.results.filter(
+                (hit) => !isRecord(hit) || !hidden(hit.sessionKey, prefixes),
+              ),
+            }
+          : {}),
+      },
+    );
   }
   return result;
 }
