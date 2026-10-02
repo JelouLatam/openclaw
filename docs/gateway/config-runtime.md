@@ -7,7 +7,7 @@ read_when:
 title: "Configuration — runtime basics"
 ---
 
-Top-level runtime keys: `worktreeRoot`, `worktreeAcceleration`, `models.*`, `discovery.*`, `update.*`, `acp.*`, and `wizard.*`.
+Top-level runtime keys: `worktreeRoot`, `worktreeAcceleration`, `worktreeNewSessions`, `models.*`, `discovery.*`, `update.*`, `acp.*`, and `wizard.*`.
 
 For the full key index and the other top-level config domains, see [Configuration reference](/gateway/configuration-reference).
 
@@ -36,6 +36,18 @@ Optional global boolean for [managed worktree filesystem acceleration](/concepts
 ```
 
 Set `false` to use normal Git checkout and file copying for new worktrees. This option applies across agents and managed-worktree owners; existing checkouts are unchanged. Supported backends are Btrfs snapshots on Linux, APFS directory clones on macOS, and ReFS block clones on Windows. Repository setup and dependencies remain per-worktree.
+
+## `worktreeNewSessions`
+
+Optional global boolean, default `false`. When `true`, a session a person creates for an agent whose workspace is a Git checkout starts in a [managed worktree](/concepts/managed-worktrees#session-worktrees) of that workspace, as if `sessions.create` had received `worktree: true`. Use it when several people share one agent workspace and nobody should work on the shared checkout.
+
+```json5
+{
+  worktreeNewSessions: true,
+}
+```
+
+It applies only to new sessions created by an operator connection. Requests that choose another workspace source (`cwd`, a project, a repository, `execNode`, an empty workspace, a catalog, a fork or an incognito session) or set `worktree` explicitly keep their choice. Existing sessions, the agent's main session and sessions started by `sessions_spawn` are unchanged. Agents whose workspace is not a Git checkout are unaffected.
 
 ## Models
 
