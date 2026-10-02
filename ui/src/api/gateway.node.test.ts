@@ -903,6 +903,40 @@ describe("GatewayBrowserClient", () => {
     });
   });
 
+  it("omits configured sessions from non-admin browser list responses", async () => {
+    vi.stubGlobal("document", {
+      documentElement: {
+        getAttribute: () => '["agent:atlas:whatsapp:atlas:direct:"]',
+      },
+    });
+    const client = new GatewayBrowserClient({
+      url: "ws://127.0.0.1:18789",
+      token: "shared-auth-token",
+    });
+    const { ws, connectFrame } = await startConnect(client);
+    emitHello(ws, connectFrame.id, { role: "operator", scopes: ["operator.read"] });
+
+    const request = client.request("sessions.list", { agentId: "atlas" });
+    const frame = JSON.parse(ws.sent.at(-1) ?? "{}") as { id?: string };
+    ws.emitMessage({
+      type: "res",
+      id: frame.id,
+      ok: true,
+      payload: {
+        sessions: [
+          { key: "agent:atlas:whatsapp:atlas:direct:synthetic-peer" },
+          { key: "agent:atlas:whatsapp:group:synthetic-group" },
+        ],
+        count: 2,
+      },
+    });
+
+    await expect(request).resolves.toEqual({
+      sessions: [{ key: "agent:atlas:whatsapp:group:synthetic-group" }],
+      count: 1,
+    });
+  });
+
   it("settles a companion ask from one final response", async () => {
     const client = new GatewayBrowserClient({
       url: "ws://127.0.0.1:18789",

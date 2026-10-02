@@ -86,6 +86,19 @@ afterEach(async () => {
 });
 
 describe("persistent session roster", () => {
+  it("defers a role-dependent roster until the live connection establishes admin scope", async () => {
+    persist(record());
+    await flushSessionRosters();
+    const attribute = "data-openclaw-hidden-session-prefixes-for-non-admins";
+    document.documentElement.setAttribute(attribute, '["agent:main:whatsapp:direct:"]');
+    try {
+      expect(await sessionRosterCache.read("gateway-one", expected)).toBeNull();
+    } finally {
+      document.documentElement.removeAttribute(attribute);
+    }
+    expect(await sessionRosterCache.read("gateway-one", expected)).not.toBeNull();
+  });
+
   it("round-trips durable sidebar fields while excluding live run state and avatars", async () => {
     const writes = vi.spyOn(IDBObjectStore.prototype, "put");
     const row: GatewaySessionRow = {

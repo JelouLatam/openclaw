@@ -217,6 +217,8 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
     "Named environment color ramp: teal, amber, purple, coral, pink, blue, green, red, or gray.",
   "gateway.controlUi.communityInvite":
     "Show the Discord community invitation in the Control UI served by this Gateway (default on). Set false to hide it for every browser using this UI deployment. Changes apply after browser refresh or reconnect; re-enabling preserves browser-local dismissals.",
+  "gateway.controlUi.hiddenSessionKeyPrefixesForNonAdmins":
+    "Session key prefixes omitted from Control UI list and search results when the connected operator lacks operator.admin. This is a browser presentation rule, not session authorization: direct links, Gateway APIs, agents, and channel delivery remain available under their normal permissions. Reload the Control UI after changing it.",
   "gateway.controlUi.newSessionModelDefaults":
     'Choose "configured" to start fresh Control UI drafts with the selected agent’s configured model, runtime and reasoning defaults instead of remembered selections. Default: "last-used". Explicit draft and conversation choices remain editable; Fast Mode and placement preferences are unchanged. Applies after browser refresh or reconnect.',
   "gateway.controlUi.github.token":

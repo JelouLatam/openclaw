@@ -22,6 +22,7 @@ export async function searchProjectedSessionTranscripts(params: {
   scope: NonNullable<SessionsSearchParams["scope"]>;
   context: GatewayRequestContext;
   client: GatewayClient | null;
+  hiddenSessionKeyPrefixes?: readonly string[];
   onResult: (result: SessionsSearchResult) => void;
 }) {
   const projection = getSessionRowProjection(params.context);
@@ -47,6 +48,9 @@ export async function searchProjectedSessionTranscripts(params: {
       { target: SessionStoreTarget; rows: Map<string, SelectedRow> }
     >();
     for (const [key] of entries) {
+      if (params.hiddenSessionKeyPrefixes?.some((prefix) => key.startsWith(prefix))) {
+        continue;
+      }
       const row = prepared.getTarget(key);
       if (!row) {
         continue;

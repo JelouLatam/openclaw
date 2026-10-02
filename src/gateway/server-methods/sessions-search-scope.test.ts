@@ -104,6 +104,66 @@ const paletteScope = {
   excludeSystem: true,
 };
 
+test("Control UI searches exclude configured non-admin session keys before the hit limit", async () => {
+  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    try {
+      const owner = ensureProfileForEmail("search-display-owner@example.test").id;
+      const visible = await seed("main", "dashboard:visible", owner, "needle");
+      const hidden = await seed("main", "whatsapp:atlas:direct:synthetic-peer", owner, "needle");
+      const context = requestContext({
+        agents: { list: [{ id: "main", default: true }] },
+        gateway: {
+          controlUi: {
+            hiddenSessionKeyPrefixesForNonAdmins: ["agent:main:whatsapp:atlas:direct:"],
+          },
+        },
+      });
+      const client = identifiedClient(owner);
+      const request = { query: "needle", limit: 1, scope: paletteScope };
+      const teamResult = await search(context, client, request);
+      expect(teamResult.ok, teamResult.error?.message).toBe(true);
+      expect(teamResult.payload?.results.map((hit) => hit.sessionKey)).toEqual([visible]);
+      expect(teamResult.payload).not.toHaveProperty("truncated");
+      const teamUnscoped = await search(context, client, { query: "needle", limit: 1 });
+      expect(teamUnscoped.payload?.results.map((hit) => hit.sessionKey)).toEqual([visible]);
+      const teamList = await listSessions({ context, client, request: { limit: 1 } });
+      expect(teamList.sessions.map((row) => row.key)).toEqual([visible]);
+      expect(teamList.totalCount).toBe(1);
+      expect(teamList.nextOffset).toBeNull();
+
+      client.connect!.scopes = ["operator.read", "operator.admin"];
+      const adminResult = await search(context, client, { ...request, limit: 2 });
+      expect(adminResult.payload?.results.map((hit) => hit.sessionKey).toSorted()).toEqual(
+        [visible, hidden].toSorted(),
+      );
+      const adminUnscoped = await search(context, client, { query: "needle", limit: 2 });
+      expect(adminUnscoped.payload?.results.map((hit) => hit.sessionKey).toSorted()).toEqual(
+        [visible, hidden].toSorted(),
+      );
+      const adminList = await listSessions({ context, client, request: { limit: 2 } });
+      expect(adminList.sessions.map((row) => row.key).toSorted()).toEqual(
+        [visible, hidden].toSorted(),
+      );
+      client.connect!.scopes = ["operator.read"];
+      client.connect!.client.id = "cli";
+      const cliResult = await search(context, client, { ...request, limit: 2 });
+      expect(cliResult.payload?.results.map((hit) => hit.sessionKey).toSorted()).toEqual(
+        [visible, hidden].toSorted(),
+      );
+      const cliUnscoped = await search(context, client, { query: "needle", limit: 2 });
+      expect(cliUnscoped.payload?.results.map((hit) => hit.sessionKey).toSorted()).toEqual(
+        [visible, hidden].toSorted(),
+      );
+      const cliList = await listSessions({ context, client, request: { limit: 2 } });
+      expect(cliList.sessions.map((row) => row.key).toSorted()).toEqual(
+        [visible, hidden].toSorted(),
+      );
+    } finally {
+      await disposeSessionReadContexts();
+    }
+  });
+});
+
 test("scope search reaches beyond 200 sessions and four agents with bounded matched snapshots", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     try {

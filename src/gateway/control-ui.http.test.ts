@@ -1176,6 +1176,26 @@ describe("handleControlUiHttpRequest", () => {
     expect(bootstrapResponse.res.statusCode).toBe(401);
   });
 
+  it("publishes non-admin session presentation prefixes in the document", async () => {
+    const tmp = await createControlUiRoot("<html><head></head><body>Hello</body></html>\n");
+    const config: OpenClawConfig = {
+      gateway: {
+        controlUi: {
+          hiddenSessionKeyPrefixesForNonAdmins: ["agent:atlas:whatsapp:atlas:direct:"],
+        },
+      },
+    };
+    const { res, end } = makeMockHttpResponse();
+    await handleControlUiHttpRequest(
+      { url: "/", method: "GET", headers: {} } as IncomingMessage,
+      res,
+      { root: { kind: "resolved", path: tmp }, config },
+    );
+    expect(responseBody(end)).toContain(
+      'data-openclaw-hidden-session-prefixes-for-non-admins="[&quot;agent:atlas:whatsapp:atlas:direct:&quot;]"',
+    );
+  });
+
   it("rewrites public asset hrefs in index.html when Control UI uses a configured base path (#94157)", async () => {
     const html =
       '<html><head><link rel="manifest" href="/manifest.webmanifest" /><link rel="icon" href="/favicon.svg" /></head><body></body></html>\n';

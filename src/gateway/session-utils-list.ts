@@ -463,10 +463,19 @@ export async function listProjectedSessions(params: {
   key?: string;
   context?: GatewayRequestContext;
   client?: GatewayClient | null;
+  hiddenSessionKeyPrefixes?: readonly string[];
   diagnostics?: SessionListDiagnostics;
   onResult?: (result: SessionsListResult) => void;
 }): Promise<SessionsListResult> {
-  const { projection, opts, key: exactKey, context, client, diagnostics } = params;
+  const {
+    projection,
+    opts,
+    key: exactKey,
+    context,
+    client,
+    hiddenSessionKeyPrefixes,
+    diagnostics,
+  } = params;
   const dirtyRowCount = projection.dirtyRowCount;
   const materializedBefore = projection.materializedCount;
   diagnostics?.mark("materialize");
@@ -501,7 +510,19 @@ export async function listProjectedSessions(params: {
       });
       diagnostics?.mark("filterSetup");
       const selection = withAgentRosterFactsBatch(prepared.cfg, () =>
-        runSynchronousWork(selectSessionEntries({ ...filters, defaultLimit: 100 })),
+        runSynchronousWork(
+          selectSessionEntries({
+            ...filters,
+            defaultLimit: 100,
+            ...(hiddenSessionKeyPrefixes?.length
+              ? {
+                  entryFilter: (key, entry) =>
+                    filters.entryFilter?.(key, entry) !== false &&
+                    !hiddenSessionKeyPrefixes.some((prefix) => key.startsWith(prefix)),
+                }
+              : {}),
+          }),
+        ),
       );
       return { now, presentation, prepared, selection };
     } finally {

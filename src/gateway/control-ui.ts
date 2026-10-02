@@ -61,6 +61,7 @@ import {
   CONTROL_UI_BOOTSTRAP_CONFIG_PATH,
   CONTROL_UI_BUILD_ID_ATTRIBUTE,
   CONTROL_UI_ENVIRONMENT_ATTRIBUTE,
+  CONTROL_UI_HIDDEN_SESSION_PREFIXES_ATTRIBUTE,
   CONTROL_UI_ROOT_PUBLIC_ASSETS,
   CONTROL_UI_TERMINAL_ENABLED_ATTRIBUTE,
   isControlUiRootPublicAsset,
@@ -759,6 +760,7 @@ async function serveResolvedIndexHtml(
   allowWasm?: boolean,
   environment?: ControlUiEnvironment,
   buildId?: string,
+  hiddenSessionKeyPrefixesForNonAdmins?: readonly string[],
 ) {
   const normalizedBasePath = normalizeControlUiBasePath(basePath);
   const withBasePath = rewriteControlUiIndexHtmlAssetHrefs(body, normalizedBasePath, buildId);
@@ -767,6 +769,9 @@ async function serveResolvedIndexHtml(
   const basePathAttribute = ` ${CONTROL_UI_BASE_PATH_ATTRIBUTE}="${escapeHtml(normalizedBasePath)}"`;
   const environmentAttributes = environment
     ? ` ${CONTROL_UI_ENVIRONMENT_ATTRIBUTE}="${escapeHtml(JSON.stringify(environment))}"`
+    : "";
+  const hiddenSessionPrefixesAttribute = hiddenSessionKeyPrefixesForNonAdmins?.length
+    ? ` ${CONTROL_UI_HIDDEN_SESSION_PREFIXES_ATTRIBUTE}="${escapeHtml(JSON.stringify(hiddenSessionKeyPrefixesForNonAdmins))}"`
     : "";
   // Let the app initialize fail-closed without guessing whether this document
   // was served with the terminal's WASM CSP allowance.
@@ -780,7 +785,7 @@ async function serveResolvedIndexHtml(
       .replace(new RegExp(`\\s${CONTROL_UI_BUILD_ID_ATTRIBUTE}="[^"]*"`, "g"), "")
       .replace(
         /<html\b/i,
-        `<html${basePathAttribute} ${CONTROL_UI_TERMINAL_ENABLED_ATTRIBUTE}="${allowWasm === true}"${environmentAttributes}${buildAttribute}`,
+        `<html${basePathAttribute} ${CONTROL_UI_TERMINAL_ENABLED_ATTRIBUTE}="${allowWasm === true}"${environmentAttributes}${hiddenSessionPrefixesAttribute}${buildAttribute}`,
       ),
   );
   const hashes = computeInlineScriptHashes(prepared);
@@ -1100,6 +1105,7 @@ export async function handleControlUiHttpRequest(
         terminalEnabled,
         opts?.config?.gateway?.controlUi?.environment,
         publicAssetBuildId,
+        opts?.config?.gateway?.controlUi?.hiddenSessionKeyPrefixesForNonAdmins,
       );
       return;
     }
