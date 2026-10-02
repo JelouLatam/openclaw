@@ -361,6 +361,7 @@ export const OpenClawSchemaShape = {
     )
     .optional(),
   worktreeAcceleration: z.boolean().optional(),
+  worktreeNewSessions: z.boolean().optional(),
   tools: ToolsSchema,
   security: SecuritySchema,
   bindings: BindingsSchema,

@@ -104,6 +104,8 @@ export type OpenClawConfig = {
   worktreeRoot?: string;
   /** Use filesystem acceleration for new worktrees when supported (default: true). */
   worktreeAcceleration?: boolean;
+  /** Start a person's new session of a Git-workspace agent in a managed worktree (default: false). */
+  worktreeNewSessions?: boolean;
   /** Tool exposure, policy, web/media tools, exec, and code-mode settings. */
   tools?: ToolsConfig;
   /** Legacy/direct agent bindings used by runtime resolution. */

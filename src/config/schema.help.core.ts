@@ -10,6 +10,8 @@ export const CORE_FIELD_HELP: Record<string, string> = {
     "Global directory for new managed worktrees. Use an absolute path or ~ for your home directory; defaults to <state-dir>/worktrees. Existing worktrees keep their recorded paths when this changes.",
   worktreeAcceleration:
     "Use filesystem acceleration for new managed worktrees when supported (default: true). Set false to use normal Git checkout and file copying. Applies only to new worktrees.",
+  worktreeNewSessions:
+    "Start a session a person creates for an agent whose workspace is a Git checkout in a managed worktree of that workspace, so it never works on the shared checkout (default: false). Requests that name a folder, project, repository, remote node, empty workspace, catalog, fork or incognito keep their own source; existing, main and spawned sessions are unchanged.",
   "channels.discord.activities":
     "Discord Activities configuration for presenting core show_widget documents inside Discord. Leave unset to keep Activity routes, presentation, and handlers disabled.",
   "channels.discord.activities.clientSecret":

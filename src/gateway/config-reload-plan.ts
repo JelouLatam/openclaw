@@ -286,6 +286,7 @@ const DEFAULT_RELOAD_POLICIES: ReloadPolicy[] = [
       "memory.citations",
       "worktreeRoot",
       "worktreeAcceleration",
+      "worktreeNewSessions",
       "security.audit.suppressions",
       "security.installPolicy",
       "diagnostics.cacheTrace.enabled",

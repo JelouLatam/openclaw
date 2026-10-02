@@ -33,6 +33,7 @@ import {
   loadGatewaySessionEntryReadOnly,
   resolveGatewaySessionStoreTarget,
 } from "../session-utils.js";
+import { shouldDefaultSessionWorktree } from "../session-worktree-default.js";
 import {
   prepareSessionWorktreeCreation,
   validateSessionWorktreeSelection,
@@ -180,6 +181,26 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     if (!explicitlyRequestedAgent.ok) {
       respond(false, undefined, explicitlyRequestedAgent.error);
       return;
+    }
+    if (
+      shouldDefaultSessionWorktree({
+        cfg,
+        request: p,
+        agentId: explicitlyRequestedAgent.agentId,
+        via: sessionCreation.via,
+        existingSession: Boolean(
+          explicitlyRequestedKey &&
+          loadGatewaySessionEntryReadOnly(explicitlyRequestedKey, {
+            agentId: explicitlyRequestedAgent.agentId,
+          }).entry,
+        ),
+        mainSession:
+          explicitlyRequestedKey !== undefined &&
+          explicitlyRequestedKey ===
+            resolveAgentMainSessionKey({ cfg, agentId: explicitlyRequestedAgent.agentId }),
+      })
+    ) {
+      p.worktree = true;
     }
     const catalogRequestedKey = normalizeOptionalString(p.key) ?? "global";
     const catalogAgentId = catalogId
