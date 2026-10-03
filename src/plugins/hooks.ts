@@ -441,6 +441,10 @@ export function createHookRunner(
       // Keep the first defined system prompt so higher-priority hooks win.
       systemPrompt: acc?.systemPrompt ?? next.systemPrompt,
       ...mergeAgentTurnPrepare(acc, next),
+      persistentContext: concatOptionalTextSegments({
+        left: acc?.persistentContext,
+        right: next.persistentContext,
+      }),
       ...(toolsAllow !== undefined ? { toolsAllow } : {}),
       prependSystemContext: concatOptionalTextSegments({
         left: acc?.prependSystemContext,
@@ -943,6 +947,7 @@ export function createHookRunner(
       return {
         ...(result.prependContext ? { prependContext: result.prependContext } : {}),
         ...(result.appendContext ? { appendContext: result.appendContext } : {}),
+        ...(result.persistentContext ? { persistentContext: result.persistentContext } : {}),
       };
     } finally {
       token.active = false;

@@ -8,6 +8,7 @@ import {
   type CompactionRequestBudget,
 } from "../../sessions/compaction/request-budget.js";
 import type { AgentSession } from "../../sessions/index.js";
+import type { CustomMessage } from "../../sessions/messages.js";
 import { withSessionManagerWrite } from "../../sessions/session-manager-write-admission.js";
 import { ackPendingAgentSteeringItems } from "../../subagents/registry/subagent-registry.js";
 import { recordAggregateTruncation } from "../prompt-cache-observability.js";
@@ -80,6 +81,7 @@ export async function submitEmbeddedAttemptPrompt(input: {
   onSteeringAcknowledged: () => void;
   persistToolResultProjections: () => Promise<void>;
   prependContext?: string;
+  pluginContextMessage?: CustomMessage<string>;
   promptActiveSession: PromptActiveSession;
   runtimeContextMessage?: RuntimeContextCustomMessage;
   runtimeOnly: boolean;
@@ -192,6 +194,10 @@ export async function submitEmbeddedAttemptPrompt(input: {
   };
   attachPromptCompactionRequestBudget(promptOptions, input.compactionRequestBudget);
   const cleanupProviderPromptHistoryTransform = installProviderPromptHistoryTransform();
+  const pluginSnapshot = input.pluginContextMessage;
+  const cleanupPluginSnapshot = pluginSnapshot
+    ? activeSession[agentSessionQueuePromptContext](pluginSnapshot)
+    : () => {};
   try {
     // Persist after the user (or synthetic runtime prompt), retiring unconsumed
     // context when preflight handles or rejects the prompt before the loop starts.
@@ -213,6 +219,7 @@ export async function submitEmbeddedAttemptPrompt(input: {
       input.onSteeringAcknowledged();
     }
   } finally {
+    cleanupPluginSnapshot();
     cleanupProviderPromptHistoryTransform();
     cleanupModelPromptTransform();
   }

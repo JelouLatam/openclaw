@@ -333,9 +333,15 @@ export async function runEmbeddedAttemptPromptPhase(
         contextWindow: promptContext.contextTokenBudget,
         reserveTokens,
       };
-      const pendingContextMessages = promptContext.runtimeContextMessageForCurrentTurn
-        ? [promptContext.runtimeContextMessageForCurrentTurn]
+      const pendingPluginContext = promptContext.pluginContextMessageForCurrentTurn
+        ? [promptContext.pluginContextMessageForCurrentTurn]
         : [];
+      const pendingContextMessages = [
+        ...(promptContext.runtimeContextMessageForCurrentTurn
+          ? [promptContext.runtimeContextMessageForCurrentTurn]
+          : []),
+        ...pendingPluginContext,
+      ];
       compactionRequestBudget = createCompactionRequestBudget({
         ...foregroundBudget,
         systemPrompt: promptContext.systemPromptForHook,
@@ -352,7 +358,16 @@ export async function runEmbeddedAttemptPromptPhase(
                 persistedUserIdempotencyKey: pendingUserIdempotencyKey,
               }).pendingContextMessages,
             }
-          : { pendingContextMessages }),
+          : {
+              pendingContextMessages: promptContext.runtimeContextMessageForCurrentTurn
+                ? [promptContext.runtimeContextMessageForCurrentTurn]
+                : [],
+              pendingQueuedContextMessages: resolvePendingRuntimeContextReplay({
+                messages: activeSession.messages,
+                pendingContextMessages: pendingPluginContext,
+                persistedUserIdempotencyKey: pendingUserIdempotencyKey,
+              }).pendingContextMessages,
+            }),
         pendingAdditivePrompt: [promptBuildPrependContext, promptBuildAppendContext]
           .filter(Boolean)
           .join("\n\n"),
@@ -403,6 +418,7 @@ export async function runEmbeddedAttemptPromptPhase(
 
     if (!state.skipPromptSubmission) {
       await submitEmbeddedAttemptPrompt({
+        pluginContextMessage: promptContext.pluginContextMessageForCurrentTurn,
         ...(promptBuildAppendContext ? { appendContext: promptBuildAppendContext } : {}),
         attempt,
         activeSession,
