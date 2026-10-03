@@ -30,6 +30,17 @@ export type WorkspaceSandboxParams = Pick<
   placementSandbox?: Awaited<ReturnType<typeof resolveSandboxContext>>;
 };
 
+// A child spawned with `worktree: true` runs with its managed worktree as cwd and
+// as the session root the Gateway recorded; the projection is that checkout, so
+// asking for it is not an override.
+function isProjectedSessionRoot(requestedCwd: string | undefined, sessionRoot: string | undefined) {
+  return (
+    requestedCwd !== undefined &&
+    sessionRoot !== undefined &&
+    resolveUserPath(sessionRoot) === requestedCwd
+  );
+}
+
 function assertSandboxCwd(requestedCwd: string | undefined, workspaceDir: string) {
   if (requestedCwd && requestedCwd !== workspaceDir) {
     throw new Error(
@@ -47,11 +58,9 @@ export function resolveHarnessWorkspace(
 ) {
   const projected =
     prepared?.sandbox?.workspaceSource === "managed-worktree" && prepared.sandbox === sandbox;
-  if (projected) {
-    assertSandboxCwd(
-      params.cwd ? resolveUserPath(params.cwd) : undefined,
-      prepared.resolvedWorkspace,
-    );
+  const requestedCwd = params.cwd ? resolveUserPath(params.cwd) : undefined;
+  if (projected && !isProjectedSessionRoot(requestedCwd, params.sessionRoot)) {
+    assertSandboxCwd(requestedCwd, prepared.resolvedWorkspace);
   }
   return {
     workspaceDir: projected ? prepared.effectiveWorkspace : workspaceDir,
@@ -131,7 +140,10 @@ export async function resolveAttemptWorkspaceSandbox(params: WorkspaceSandboxPar
         mode: params.permissionMode,
       }
     : undefined;
-  if (sandbox?.enabled) {
+  if (
+    sandbox?.enabled &&
+    !(projectedWorkspace && isProjectedSessionRoot(requestedCwd, params.sessionRoot))
+  ) {
     assertSandboxCwd(requestedCwd, resolvedWorkspace);
   }
   assertCurrent();
