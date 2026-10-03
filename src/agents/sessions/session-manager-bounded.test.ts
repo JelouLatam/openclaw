@@ -932,7 +932,7 @@ it("preserves explicit reset retention of excluded user input in a bounded reope
   );
 });
 
-it("retains plugin-context lifecycle through bounded compaction reloads and clears it on reset", async () => {
+it("retains plugin-context lifecycle metadata through bounded compaction reloads and clears it on reset", async () => {
   const { dir, scope } = await createSessionScope("bounded-plugin-context");
   const manager = SessionManager.open(scope, dir);
   manager.appendMessage(makeUserMessage("Synthetic initial request", 1));
@@ -954,7 +954,20 @@ it("retains plugin-context lifecycle through bounded compaction reloads and clea
   await waitForSessionTranscriptIndexReconcile(scope);
 
   const reopened = SessionManager.openBounded(scope, { cwd: dir, maxBytes: 8192, maxEvents: 20 });
-  expect(reopened.getEntry(snapshotId)).toBeUndefined();
+  // The bounded index retains context-eligible custom rows for traversal, while the
+  // compaction boundary must still exclude this superseded snapshot from model input.
+  expect(reopened.getEntry(snapshotId)).toMatchObject({
+    customType: PLUGIN_PROMPT_CONTEXT_TYPE,
+    content: "Synthetic plugin state before compaction",
+  });
+  expect(reopened.buildSessionContext().messages).not.toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        customType: PLUGIN_PROMPT_CONTEXT_TYPE,
+        content: "Synthetic plugin state before compaction",
+      }),
+    ]),
+  );
   const first = getLatestCompactionEntry(reopened.getBranch());
   const { __openclaw: firstMetadata } = first ?? {};
   expect(firstMetadata).toEqual({
@@ -974,7 +987,10 @@ it("retains plugin-context lifecycle through bounded compaction reloads and clea
   reopened.appendCompaction("A later summary still remembers the prior plugin state", keptId, 50);
   const { __openclaw: repeatedMetadata } = getLatestCompactionEntry(reopened.getBranch()) ?? {};
   expect(repeatedMetadata?.pluginPromptContext).toBe(true);
-  expect(reopened.getEntry(snapshotId)).toBeUndefined();
+  expect(reopened.getEntry(snapshotId)).toMatchObject({
+    customType: PLUGIN_PROMPT_CONTEXT_TYPE,
+    content: "Synthetic plugin state before compaction",
+  });
   await waitForSessionTranscriptIndexReconcile(scope);
   const again = SessionManager.openBounded(scope, { cwd: dir, maxBytes: 8192, maxEvents: 20 });
   const { __openclaw: reopenedMetadata } = getLatestCompactionEntry(again.getBranch()) ?? {};
