@@ -68,6 +68,7 @@ export async function resolvePromptBuildHookResult(params: {
   messages: unknown[];
   hookCtx: PluginHookAgentContext;
   hookRunner?: PromptBuildHookRunner | null;
+  persistentContextSupported?: boolean;
 }): Promise<PluginHookBeforePromptBuildResult> {
   const runId = params.hookCtx.runId;
   const cachedInjections = runId ? promptBuildDrainCache.get(runId) : undefined;
@@ -124,6 +125,7 @@ export async function resolvePromptBuildHookResult(params: {
     ? await params.hookRunner
         .runBeforePromptBuild(
           {
+            persistentContextSupported: params.persistentContextSupported,
             prompt: params.prompt,
             messages: params.messages,
           },
@@ -136,6 +138,7 @@ export async function resolvePromptBuildHookResult(params: {
     : undefined;
   return {
     systemPrompt: promptBuildResult?.systemPrompt,
+    persistentContext: promptBuildResult?.persistentContext,
     ...(promptBuildResult?.toolsAllow !== undefined
       ? { toolsAllow: promptBuildResult.toolsAllow }
       : {}),

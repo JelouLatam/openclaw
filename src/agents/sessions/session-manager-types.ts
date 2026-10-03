@@ -43,7 +43,12 @@ export interface ModelChangeEntry extends SessionEntryBase {
 
 export interface CompactionEntry<T = unknown> extends SessionEntryBase {
   type: "compaction";
-  __openclaw?: { runId?: string; itemId?: string };
+  __openclaw?: {
+    runId?: string;
+    itemId?: string;
+    /** The summary may retain earlier plugin context even when its snapshot is no longer kept. */
+    pluginPromptContext?: true;
+  };
   summary: string;
   firstKeptEntryId: string;
   tokensBefore: number;

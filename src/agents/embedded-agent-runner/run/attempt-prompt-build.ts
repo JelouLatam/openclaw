@@ -20,10 +20,15 @@ import {
   resolveInternalEventPromptBody,
 } from "../../internal-events.js";
 import type { RuntimeContextFragment } from "../../internal-runtime-context.js";
+import {
+  buildPluginPromptContextSnapshot,
+  deduplicatePluginPromptContext,
+} from "../../plugin-prompt-context.js";
 import { describeProviderRequestRoutingSummary } from "../../provider-attribution.js";
 import { buildRuntimeFactsContext } from "../../runtime-facts-prompt.js";
 import type { AgentMessage } from "../../runtime/index.js";
 import type { AgentSession, SessionManager } from "../../sessions/index.js";
+import { getLatestCompactionEntry } from "../../sessions/session-manager-codec.js";
 import {
   leasePendingAgentSteeringItems,
   prependAgentSteeringPrompt,
@@ -132,7 +137,11 @@ export async function prepareEmbeddedAttemptPromptAssembly(input: {
   };
   const promptBuildMessages =
     pruneProcessedHistoryImages(input.activeSession.messages) ?? input.activeSession.messages;
-  const promptEvent = { prompt: effectivePrompt, messages: promptBuildMessages };
+  const promptEvent = {
+    prompt: effectivePrompt,
+    messages: promptBuildMessages,
+    persistentContextSupported: true,
+  };
   const hookResult = preserveExactPrompt
     ? undefined
     : await resolvePromptBuildHookResult({
@@ -141,6 +150,7 @@ export async function prepareEmbeddedAttemptPromptAssembly(input: {
         messages: promptBuildMessages,
         hookCtx,
         hookRunner: input.hookRunner,
+        persistentContextSupported: true,
       });
   const callableToolNames = input.applyPromptBuildToolsAllow(hookResult?.toolsAllow);
   // Regenerate owned capability guidance before composing hook additions, without
@@ -312,12 +322,21 @@ export async function prepareEmbeddedAttemptPromptAssembly(input: {
       ? resolveHeartbeatSummaryForAgent(attempt.config, input.sessionAgentId)
       : undefined;
 
+  const { __openclaw: latestCompactionMetadata } = preserveExactPrompt
+    ? {}
+    : (getLatestCompactionEntry(input.sessionManager.getBranch()) ?? {});
+
   return {
     assertHostActive,
     hookCtx,
     effectivePrompt,
     promptBuildPrependContext,
     promptBuildAppendContext,
+    hasSummarizedPluginContext: latestCompactionMetadata?.pluginPromptContext === true,
+    persistentContext: preserveExactPrompt
+      ? undefined
+      : (joinHookContext(hookResult?.persistentContext, authorizedHookResult?.persistentContext) ??
+        null),
     effectiveTranscriptPrompt,
     originContext,
     transcriptLeafId,
@@ -341,6 +360,8 @@ type PromptContextAttempt = Pick<
 >;
 
 type PromptAssemblyContext = {
+  hasSummarizedPluginContext?: boolean;
+  persistentContext?: string | null;
   effectivePrompt: string;
   effectiveTranscriptPrompt: string;
   originContext?: ReturnType<typeof buildInterSessionPromptContext>;
@@ -491,9 +512,20 @@ export async function prepareEmbeddedAttemptPromptContext(input: {
     runtimeContextForHook,
     contextFragments,
   );
-  const messagesForCurrentPrompt = runtimeContextMessageForCurrentTurn
-    ? [...sessionMessages, runtimeContextMessageForCurrentTurn]
-    : sessionMessages;
+  const pluginContextMessageForCurrentTurn = buildPluginPromptContextSnapshot(
+    input.prompt.persistentContext,
+    sessionMessages,
+    input.prompt.hasSummarizedPluginContext,
+  );
+  const pluginContextMessages = deduplicatePluginPromptContext(
+    sessionMessages,
+    pluginContextMessageForCurrentTurn ? [pluginContextMessageForCurrentTurn] : [],
+  );
+  const messagesForCurrentPrompt = [
+    ...sessionMessages,
+    ...(runtimeContextMessageForCurrentTurn ? [runtimeContextMessageForCurrentTurn] : []),
+    ...pluginContextMessages,
+  ];
   const boundaryInput = {
     sessionVersion: input.isRawModelRun ? undefined : input.sessionVersion,
     appendOnlyRuntimeContext: input.appendOnlyRuntimeContext,
@@ -541,6 +573,7 @@ export async function prepareEmbeddedAttemptPromptContext(input: {
     promptToolResultAggregateMaxChars,
     promptToolResultMaxChars,
     ...(runtimeContextMessageForCurrentTurn ? { runtimeContextMessageForCurrentTurn } : {}),
+    ...(pluginContextMessageForCurrentTurn ? { pluginContextMessageForCurrentTurn } : {}),
     systemPromptForHook,
   };
 }

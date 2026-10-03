@@ -47,7 +47,8 @@ Use the phase-specific hooks for new plugins:
   alone do not identify an admission. Omitted fields preserve existing harness
   behavior.
   Return `prependContext`, `appendContext`, `systemPrompt`,
-  `prependSystemContext`, `appendSystemContext`, or `toolsAllow`. `toolsAllow`
+  `prependSystemContext`, `appendSystemContext`, `persistentContext` on a supporting
+  embedded host, or `toolsAllow`. `toolsAllow`
   can only narrow the host-resolved tool surface for the current turn; `[]`
   submits no optional tools, while omitting it leaves the existing surface unchanged.
   Restrictions returned by multiple hooks are intersected. The embedded runner
@@ -78,6 +79,47 @@ the same runner is skipped while its outer dispatch is active; other hook
 families and independent turns remain available.
 
 Message-consuming prompt hooks receive a detached model-context snapshot. Mutating nested messages does not change the caller's history, including when a handler retains its input after returning. Registrations within one dispatch share that snapshot in priority order; prepare, ordinary prompt-build, authorized enrichment, and subsequent prompt rebuilds receive separate snapshots. Storage-only native prompt text and tool-result details are excluded from these snapshots.
+
+### Persistent prompt context (embedded runner)
+
+The embedded runner advertises `event.persistentContextSupported === true` to
+`before_prompt_build` handlers. An opted-in handler can return
+`{ persistentContext: text }` instead of rebuilding transient context on every
+turn. Other harnesses omit the capability; plugins supporting those harnesses
+must keep their existing `prependContext` or `appendContext` path when it is
+absent. This experimental capability does not add tool or conversation authority.
+
+The host combines accepted contributions in hook priority order into one hidden
+session-context snapshot. It queues that snapshot through the native session
+owner after the admitted user message. Unchanged retained context is not appended
+again; changes append a new snapshot without editing previous transcript entries.
+Budgeting and submission use the same projection, including after compaction and
+when resuming an interrupted admitted turn.
+
+If hooks are evaluated and no persistent contribution remains, the host appends
+one retirement marker when a snapshot is retained or its state may remain in a
+compaction summary. The native compaction marker carries this lifecycle fact
+across reloads and later compactions, without retaining the old context text in
+additional storage. Sessions that never used the capability receive no marker.
+Earlier snapshots become
+historical; any fresh transient context can still be used. If a raw or settled-turn
+path deliberately skips the hooks, the host leaves their state unchanged. A
+returning contribution restores current context, including when compaction has
+removed the earlier snapshot from the active model history. Multiple contributors
+share the aggregate: this is not a per-plugin storage or deletion API.
+
+Use this only for bounded context that may remain in the session transcript.
+`display: false` hides it in the chat projection, not from the model, raw history,
+or backups. The direct session-memory projection omits custom-message text, but
+an assistant reply can repeat that text. Compaction and retirement do not erase
+historical snapshots. Existing session retention and deletion owners still apply.
+
+The authorized post-policy phase accepts this field under the same live authority
+and prompt-injection checks as transient context. Only return it when the event
+advertises support. To turn persistence off while retaining existing sessions,
+revert the plugin to transient context while keeping a host that understands these
+snapshots. Downgrading that host during an interrupted turn is not a supported
+rollback for the new carrier.
 
 ### Handler lifetime
 
@@ -132,7 +174,8 @@ Treat `toolAuthority` as an ephemeral capability:
   and before committing plugin-owned side effects.
 - `fingerprint` is opaque cache-partitioning input. It is not a bearer token or
   authorization proof; never persist, transmit, or compare it as authority.
-- Return only `prependContext` or `appendContext` from this phase. It cannot
+- Return `prependContext`, `appendContext`, or `persistentContext` when the event
+  advertises support. This phase cannot
   replace the system prompt or change `toolsAllow` after policy has settled.
 
 The host revalidates authority after each awaited handler and discards stale

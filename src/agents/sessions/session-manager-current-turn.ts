@@ -7,6 +7,7 @@ import { prepareSessionTranscriptHydration } from "../../config/sessions/session
 import type { TranscriptEntryAnchor } from "../../config/sessions/transcript-entry-anchor.js";
 import { captureOwnedTranscriptWriteAssertion } from "../../config/sessions/transcript-write-context.js";
 import { OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE } from "../internal-runtime-context.js";
+import { PLUGIN_PROMPT_CONTEXT_TYPE } from "../plugin-prompt-context.js";
 import { isSessionContextMetadataEntry } from "./session-manager-codec.js";
 import type { SessionEntry, SessionMessageEntry } from "./session-manager-types.js";
 import type { SessionManagerPersistenceTarget } from "./session-manager-view-types.js";
@@ -48,7 +49,8 @@ function traversalEntry(
       isSessionContextMetadataEntry(entry) ||
       entry.type === "compaction" ||
       (entry.type === "custom_message" &&
-        entry.customType === OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE) ||
+        (entry.customType === OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE ||
+          entry.customType === PLUGIN_PROMPT_CONTEXT_TYPE)) ||
       (isInterruptedTail?.(entry) ?? false),
   };
 }

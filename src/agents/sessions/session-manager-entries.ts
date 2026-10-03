@@ -15,10 +15,11 @@ import type { ImageContent, Message, TextContent } from "../../llm/types.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import { readNestedToolActivity } from "../../sessions/nested-tool-activity.js";
 import { recordModelFallbackStop } from "../model-fallback-stop.js";
+import { hasPluginPromptContextSnapshot } from "../plugin-prompt-context.js";
 import type { SessionTreeEntry as CoreSessionTreeEntry } from "../runtime/index.js";
 import { copyCodeModeSourceAppendOptions } from "../transcript-code-mode-source.js";
 import type { BashExecutionMessage, CustomMessage } from "./messages.js";
-import { isTalkRealtimeVoiceEntry } from "./session-manager-codec.js";
+import { getLatestCompactionEntry, isTalkRealtimeVoiceEntry } from "./session-manager-codec.js";
 import {
   prepareCurrentTurnReplayWitness,
   resolveCurrentTurnEntryId,
@@ -512,6 +513,18 @@ export class SessionManagerEntries extends SessionManagerSuffixPersistence {
     metadata?: CompactionEntry["__openclaw"],
     tokensAfter?: number,
   ): string {
+    // Read the already loaded active branch, including its latest compaction marker.
+    // Do not hydrate discarded transcript payloads merely to recover this lifecycle bit.
+    const branch = this.getBranch();
+    const { __openclaw: previousCompactionMetadata } = getLatestCompactionEntry(branch) ?? {};
+    const pluginPromptContext =
+      hasPluginPromptContextSnapshot(
+        buildCoreSessionContext(branch as CoreSessionTreeEntry[]).messages,
+      ) || previousCompactionMetadata?.pluginPromptContext === true;
+    const compactionMetadata: CompactionEntry["__openclaw"] = {
+      ...metadata,
+      ...(pluginPromptContext ? { pluginPromptContext: true as const } : {}),
+    };
     const entry: CompactionEntry = {
       type: "compaction",
       id: generateSessionEntryId(),
@@ -523,7 +536,11 @@ export class SessionManagerEntries extends SessionManagerSuffixPersistence {
       ...(tokensAfter !== undefined ? { tokensAfter } : {}),
       details,
       fromHook,
-      ...(metadata?.runId || metadata?.itemId ? { __openclaw: metadata } : {}),
+      ...(compactionMetadata.runId ||
+      compactionMetadata.itemId ||
+      compactionMetadata.pluginPromptContext
+        ? { __openclaw: compactionMetadata }
+        : {}),
     };
     this.appendEntry(entry, {
       invalidateSerializedPrefixCache: fromHook === true || details !== undefined,

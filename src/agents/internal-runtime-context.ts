@@ -4,6 +4,7 @@
  * context formats before replaying or comparing messages.
  */
 import { escapeRegExp } from "../shared/regexp.js";
+import { deduplicatePluginPromptContext } from "./plugin-prompt-context.js";
 
 /** Opening delimiter for protected OpenClaw runtime context blocks. */
 export const INTERNAL_RUNTIME_CONTEXT_BEGIN = "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>";
@@ -352,9 +353,12 @@ export function resolvePendingRuntimeContextReplay<T>(params: {
   return {
     persistedUserIndex,
     replayPersistedCarrier,
-    pendingContextMessages: replayPersistedCarrier
-      ? stripRuntimeContextCustomMessages(params.pendingContextMessages)
-      : params.pendingContextMessages,
+    pendingContextMessages: deduplicatePluginPromptContext(
+      params.messages,
+      replayPersistedCarrier
+        ? stripRuntimeContextCustomMessages(params.pendingContextMessages)
+        : params.pendingContextMessages,
+    ),
   };
 }
 

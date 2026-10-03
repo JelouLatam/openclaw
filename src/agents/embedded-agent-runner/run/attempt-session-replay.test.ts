@@ -15,6 +15,7 @@ import {
 } from "../../../sessions/user-turn-transcript.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
 import { observeMainThreadSql } from "../../../test-utils/main-thread-sql-spies.test-support.js";
+import { PLUGIN_PROMPT_CONTEXT_TYPE } from "../../plugin-prompt-context.js";
 import { createAgentRunRestartAbortError } from "../../run-termination.js";
 import { guardSessionManager } from "../../session-tool-result-guard-wrapper.js";
 import {
@@ -95,6 +96,37 @@ describe("context engine bootstrap", () => {
 });
 
 describe("interrupted canonical user replay", () => {
+  it("resumes the admitted user across persisted plugin context without duplicating it", async () => {
+    await withInterruptedTurn(
+      false,
+      async (fixture) => {
+        const manager = SessionManager.open(fixture.target, fixture.attempt.workspaceDir);
+        manager.appendCustomMessageEntry(
+          PLUGIN_PROMPT_CONTEXT_TYPE,
+          "Synthetic current context",
+          false,
+        );
+        const before = loadTranscriptEventsSync(fixture.target);
+        streamMocks.streamSimple.mockImplementation((model) =>
+          createAssistantResultStream(
+            createAssistant(model, [{ type: "text", text: "Recovered turn" }]),
+          ),
+        );
+        await withReplaySession(fixture, false, async (session, submit) => {
+          await submit();
+          expect(streamMocks.streamSimple).toHaveBeenCalledOnce();
+          expect(session.getLastAssistantText()).toBe("Recovered turn");
+        });
+        const after = loadTranscriptEventsSync(fixture.target);
+        expect(after.slice(0, before.length)).toEqual(before);
+        expect(
+          after.filter((event) => event.type === "message" && event.message.role === "user"),
+        ).toHaveLength(1);
+      },
+      { interruptedTurn: false, toolProgress: false },
+    );
+  });
+
   it.each([
     { appendOnly: false, interruptedTurn: false, toolProgress: true },
     { appendOnly: true, interruptedTurn: false, toolProgress: true },

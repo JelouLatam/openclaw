@@ -20,6 +20,8 @@ export type PluginHookBeforeModelResolveResult = {
 
 // before_prompt_build hook
 export type PluginHookBeforePromptBuildEvent = {
+  /** EXPERIMENTAL: this host path persists aggregate context snapshots. */
+  persistentContextSupported?: boolean;
   prompt: string;
   /** Current request before projection. Empty means no textual request; omission is legacy. */
   currentUserMessage?: string;
@@ -33,6 +35,8 @@ export type PluginHookBeforePromptBuildResult = {
   systemPrompt?: string;
   prependContext?: string;
   appendContext?: string;
+  /** EXPERIMENTAL: durable aggregate context snapshot, owned by the embedded host. */
+  persistentContext?: string;
   /**
    * Narrows the tools submitted to the model for this turn.
    * An empty array disables optional tools; omitted leaves the existing tool policy unchanged.

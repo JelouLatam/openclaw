@@ -30,7 +30,11 @@ import {
   openOpenClawAgentDatabase,
   runOpenClawAgentWriteTransaction,
 } from "../../state/openclaw-agent-db.js";
-import { SessionManager } from "./session-manager.js";
+import {
+  buildPluginPromptContextSnapshot,
+  PLUGIN_PROMPT_CONTEXT_TYPE,
+} from "../plugin-prompt-context.js";
+import { getLatestCompactionEntry, SessionManager } from "./session-manager.js";
 
 const { uuidQueue } = vi.hoisted(() => ({ uuidQueue: [] as string[] }));
 
@@ -926,4 +930,78 @@ it("preserves explicit reset retention of excluded user input in a bounded reope
       ).toMatchObject([{ content: "explicitly retained" }]);
     },
   );
+});
+
+it("retains plugin-context lifecycle metadata through bounded compaction reloads and clears it on reset", async () => {
+  const { dir, scope } = await createSessionScope("bounded-plugin-context");
+  const manager = SessionManager.open(scope, dir);
+  manager.appendMessage(makeUserMessage("Synthetic initial request", 1));
+  const snapshotId = manager.appendCustomMessageEntry(
+    PLUGIN_PROMPT_CONTEXT_TYPE,
+    "Synthetic plugin state before compaction",
+    false,
+  );
+  const keptId = manager.appendMessage(makeUserMessage("Retained request", 2));
+  const details = { extensionFixture: "preserved" };
+  manager.appendCompaction(
+    "Plugin state was current before compaction",
+    keptId,
+    100,
+    details,
+    false,
+    { runId: "synthetic-run", itemId: "synthetic-item" },
+  );
+  await waitForSessionTranscriptIndexReconcile(scope);
+
+  const reopened = SessionManager.openBounded(scope, { cwd: dir, maxBytes: 8192, maxEvents: 20 });
+  // The bounded index retains context-eligible custom rows for traversal, while the
+  // compaction boundary must still exclude this superseded snapshot from model input.
+  expect(reopened.getEntry(snapshotId)).toMatchObject({
+    customType: PLUGIN_PROMPT_CONTEXT_TYPE,
+    content: "Synthetic plugin state before compaction",
+  });
+  expect(reopened.buildSessionContext().messages).not.toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        customType: PLUGIN_PROMPT_CONTEXT_TYPE,
+        content: "Synthetic plugin state before compaction",
+      }),
+    ]),
+  );
+  const first = getLatestCompactionEntry(reopened.getBranch());
+  const { __openclaw: firstMetadata } = first ?? {};
+  expect(firstMetadata).toEqual({
+    runId: "synthetic-run",
+    itemId: "synthetic-item",
+    pluginPromptContext: true,
+  });
+  expect(first?.details).toEqual(details);
+  expect(
+    buildPluginPromptContextSnapshot(
+      null,
+      reopened.buildSessionContext().messages,
+      firstMetadata?.pluginPromptContext,
+    )?.content,
+  ).toContain("historical only and no longer current");
+
+  reopened.appendCompaction("A later summary still remembers the prior plugin state", keptId, 50);
+  const { __openclaw: repeatedMetadata } = getLatestCompactionEntry(reopened.getBranch()) ?? {};
+  expect(repeatedMetadata?.pluginPromptContext).toBe(true);
+  expect(reopened.getEntry(snapshotId)).toMatchObject({
+    customType: PLUGIN_PROMPT_CONTEXT_TYPE,
+    content: "Synthetic plugin state before compaction",
+  });
+  await waitForSessionTranscriptIndexReconcile(scope);
+  const again = SessionManager.openBounded(scope, { cwd: dir, maxBytes: 8192, maxEvents: 20 });
+  const { __openclaw: reopenedMetadata } = getLatestCompactionEntry(again.getBranch()) ?? {};
+  expect(reopenedMetadata?.pluginPromptContext).toBe(true);
+
+  again.appendResetBoundary("reset");
+  const freshId = again.appendMessage(makeUserMessage("Fresh session without plugin context", 3));
+  again.appendCompaction("Only fresh state", freshId, 10);
+  const { __openclaw: resetMetadata } = getLatestCompactionEntry(again.getBranch()) ?? {};
+  expect(resetMetadata?.pluginPromptContext).toBeUndefined();
+  expect(
+    buildPluginPromptContextSnapshot(null, again.buildSessionContext().messages),
+  ).toBeUndefined();
 });
