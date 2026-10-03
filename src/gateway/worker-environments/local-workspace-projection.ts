@@ -650,6 +650,17 @@ export async function expireLocalWorkspaceProjection(params: {
   await withLocalWorkspaceProjection(owner, (state) => state.expire(params.retireSnapshot));
 }
 
+// A child spawned with `worktree: true` runs with the agent's workspace as its
+// workspaceDir and the worktree as its cwd; the Gateway records that workspace
+// on the session, so it names this owner as surely as the checkout does.
+function isRecordedCanonicalWorkspace(recorded: string | undefined, workspaceDir: string): boolean {
+  return (
+    typeof recorded === "string" &&
+    recorded !== "" &&
+    path.resolve(recorded) === path.resolve(workspaceDir)
+  );
+}
+
 /** Bind only a live session-owned managed checkout, never an arbitrary host path. */
 export function resolveLocalWorkspaceOwner(params: {
   cfg: OpenClawConfig;
@@ -681,7 +692,9 @@ export function resolveLocalWorkspaceOwner(params: {
     worktree.ownerId !== params.sessionKey ||
     worktree.repoRoot !== entry.worktree.repoRoot ||
     worktree.branch !== entry.worktree.branch ||
-    (params.workspaceDir && !isPathInside(worktree.path, params.workspaceDir))
+    (params.workspaceDir &&
+      !isPathInside(worktree.path, params.workspaceDir) &&
+      !isRecordedCanonicalWorkspace(entry.worktree.canonicalWorkspaceDir, params.workspaceDir))
   ) {
     throw new Error("Local sandbox managed workspace owner changed");
   }
