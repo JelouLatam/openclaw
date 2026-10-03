@@ -38,7 +38,7 @@ export type DurableInboundReplyDeliveryOptions = Pick<
   to?: string | null;
   replyToId?: string | null;
   requiredCapabilities?: DurableFinalDeliveryRequirements;
-  /** Validate the admitted sender and pin its resolved credential before a registry handoff. */
+  /** Optional: validate the admitted sender and pin its resolved credential before a registry handoff. */
   prepareRuntimeHandoff?: (cfg: OpenClawConfig) => OpenClawConfig;
 };
 
