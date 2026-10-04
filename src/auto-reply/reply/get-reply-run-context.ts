@@ -43,10 +43,10 @@ import { buildDirectChatContext, buildGroupChatContext, buildGroupIntro } from "
 import { hasInboundMedia } from "./inbound-media.js";
 import {
   buildInboundMetaSystemPrompt,
-  buildInboundUserContextPrefix,
   formatActiveGoalContext,
   resolveInboundUserContextPromptJoiner,
 } from "./inbound-meta.js";
+import { buildInboundUserContextFragment } from "./inbound-user-context-fragment.js";
 import { buildReplyPromptEnvelopeBase } from "./prompt-prelude.js";
 import { resolveReplyOperationRunState } from "./reply-operation-run-state.js";
 import { resolveRuntimePolicySessionKey } from "./runtime-policy-session-key.js";
@@ -391,13 +391,14 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
   let activeGoalContext = formatActiveGoalContext(inboundContextSessionEntry);
   // Heartbeats are synthetic system turns: delivery facts still drive routing and
   // formatting, but must not be presented to the model as user-role inbound context.
-  let inboundUserContext = isHeartbeat
-    ? ""
-    : buildInboundUserContextPrefix(
+  let inboundUserContextFragment = isHeartbeat
+    ? undefined
+    : buildInboundUserContextFragment(
         inboundUserContextSessionCtx,
         envelopeOptions,
         inboundContextSessionEntry,
       );
+  let inboundUserContext = inboundUserContextFragment?.text ?? "";
   const refreshInboundContextAfterAdmissionWait = async () => {
     if (isHeartbeat) {
       return;
@@ -407,11 +408,12 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
         ? loadSessionEntry({ storePath, sessionKey, readConsistency: "latest" })
         : (sessionEntryHandle?.getCurrent() ?? sessionStore?.[sessionKey] ?? sessionEntry);
     activeGoalContext = formatActiveGoalContext(inboundContextSessionEntry);
-    inboundUserContext = buildInboundUserContextPrefix(
+    inboundUserContextFragment = buildInboundUserContextFragment(
       inboundUserContextSessionCtx,
       envelopeOptions,
       inboundContextSessionEntry,
     );
+    inboundUserContext = inboundUserContextFragment.text;
   };
   const inboundUserContextPromptJoiner = resolveInboundUserContextPromptJoiner(sessionCtx);
   const promptEnvelopeBase = buildReplyPromptEnvelopeBase({
@@ -420,6 +422,7 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
     baseBody: baseBodyFinal,
     hasUserBody,
     inboundUserContext,
+    inboundUserContextFragment,
     activeGoalContext,
     inboundUserContextPromptJoiner,
     isBareSessionReset,
@@ -477,7 +480,11 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
     getSessionEntry: () => sessionEntry,
     isMainSession,
     inboundUserContextPromptJoiner,
-    getInboundContext: () => ({ activeGoalContext, inboundUserContext }),
+    getInboundContext: () => ({
+      activeGoalContext,
+      inboundUserContext,
+      inboundUserContextFragment,
+    }),
     refreshInboundContextAfterAdmissionWait,
     terminalReplyExpectation,
   } as const;

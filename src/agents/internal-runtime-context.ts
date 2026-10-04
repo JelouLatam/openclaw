@@ -339,6 +339,7 @@ function isUserMessage(message: unknown): message is { role: "user"; idempotency
 export function resolvePendingRuntimeContextReplay<T>(params: {
   messages: readonly unknown[];
   pendingContextMessages: T[];
+  projectPendingContext?: (message: T) => T;
   persistedUserIdempotencyKey?: string;
 }) {
   const persistedUserIndex = params.persistedUserIdempotencyKey
@@ -357,7 +358,9 @@ export function resolvePendingRuntimeContextReplay<T>(params: {
       params.messages,
       replayPersistedCarrier
         ? stripRuntimeContextCustomMessages(params.pendingContextMessages)
-        : params.pendingContextMessages,
+        : params.projectPendingContext
+          ? params.pendingContextMessages.map(params.projectPendingContext)
+          : params.pendingContextMessages,
     ),
   };
 }

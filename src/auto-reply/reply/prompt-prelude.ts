@@ -97,6 +97,7 @@ type ReplyPromptEnvelopeBaseParams = {
   baseBody: string;
   hasUserBody: boolean;
   inboundUserContext: string;
+  inboundUserContextFragment?: RuntimeContextFragment;
   activeGoalContext?: string;
   inboundUserContextPromptJoiner?: CurrentInboundPromptContext["promptJoiner"];
   isBareSessionReset: boolean;
@@ -228,7 +229,12 @@ export function buildReplyPromptEnvelopeBase(
   const fragments: RuntimeContextFragment[] = [
     ...(isRoomEvent ? [{ kind: "runtime-instruction" as const, text: ROOM_EVENT_PROMPT }] : []),
     ...(inboundUserContext
-      ? [{ kind: "conversation-data" as const, text: inboundUserContext }]
+      ? [
+          params.inboundUserContextFragment?.kind === "conversation-data" &&
+          params.inboundUserContextFragment.text === inboundUserContext
+            ? params.inboundUserContextFragment
+            : { kind: "conversation-data" as const, text: inboundUserContext },
+        ]
       : []),
     ...(deliveryDirective
       ? [{ kind: "runtime-instruction" as const, text: deliveryDirective }]

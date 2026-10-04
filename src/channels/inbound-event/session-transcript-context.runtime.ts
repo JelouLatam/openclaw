@@ -3,6 +3,10 @@ import type { HistoryEntry } from "../../auto-reply/reply/history.types.js";
 import type { FinalizedMsgContext } from "../../auto-reply/templating.js";
 import { readRecentUserAssistantTextForSession } from "../../config/sessions/transcript.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
+import {
+  attachCanonicalHistorySource,
+  readCanonicalHistorySource,
+} from "../../shared/canonical-history.js";
 import { stripInlineDirectiveTagsForDelivery } from "../../utils/directive-tags.js";
 
 type PromptMessage = Record<string, unknown>;
@@ -125,6 +129,7 @@ export async function mergeSessionTranscriptContext(params: {
   const windows = mergeableChatWindowEntries(params.ctx);
   const turns = await readRecentUserAssistantTextForSession({
     agentId,
+    canonicalHistoryProvenance: true,
     sessionKey: params.sessionKey,
     storePath: params.storePath,
     limit,
@@ -151,6 +156,10 @@ export async function mergeSessionTranscriptContext(params: {
     }
     if (turn.timestamp !== undefined) {
       item.entry.timestamp = turn.timestamp;
+    }
+    const source = readCanonicalHistorySource(turn);
+    if (source) {
+      attachCanonicalHistorySource(item.entry, source);
     }
     return item;
   });

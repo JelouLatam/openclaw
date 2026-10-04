@@ -8,6 +8,7 @@ import { resolveSessionGoalDisplayState } from "../../config/sessions/goals.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { buildDeliveryFormatPrompt } from "../../infra/outbound/delivery-format-prompt.js";
+import { omitRetainedCanonicalHistory } from "../../shared/canonical-history.js";
 import { sliceUtf16Safe, truncateUtf16Safe } from "../../utils.js";
 import type { EnvelopeFormatOptions } from "../envelope.js";
 import { formatAgentEnvelopeTimestamp } from "../envelope.js";
@@ -576,6 +577,7 @@ export function buildInboundUserContextPrefix(
   ctx: TemplateContext,
   envelope?: EnvelopeFormatOptions,
   sessionEntry?: SessionEntry,
+  retainedHistory?: Parameters<typeof omitRetainedCanonicalHistory>[1],
 ): string {
   const blocks: string[] = [];
   const chatType = normalizeChatType(ctx.ChatType);
@@ -590,7 +592,8 @@ export function buildInboundUserContextPrefix(
   const messageIdFull = normalizePromptMetadataString(ctx.MessageSidFull);
   const resolvedMessageId = messageId ?? messageIdFull;
   const timestampStr = formatConversationTimestamp(ctx.Timestamp, envelope);
-  const { boundedHistory, historyLabel, truncated } = selectInboundHistoryContext(ctx);
+  const { boundedHistory: history, historyLabel, truncated } = selectInboundHistoryContext(ctx);
+  const boundedHistory = omitRetainedCanonicalHistory(history, retainedHistory);
   const replyChainPayload = buildReplyChainPayload(ctx, envelope);
   const structuredContext = Array.isArray(ctx.ChannelStructuredContext)
     ? ctx.ChannelStructuredContext
