@@ -59,7 +59,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   clearEmbeddedSessionPromptStates(["canonical-history-fixture"]);
 });
-const model: Model<"anthropic-messages"> = {
+const model = {
   id: "claude-sonnet-4-6",
   name: "Synthetic canonical history fixture",
   api: "anthropic-messages",
@@ -70,7 +70,7 @@ const model: Model<"anthropic-messages"> = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextWindow: 1_000_000,
   maxTokens: 2_048,
-};
+} satisfies Model<"anthropic-messages">;
 type Payload = { system?: unknown; tools?: unknown; messages: unknown[] };
 const canonical = (value: unknown) =>
   JSON.stringify(value, (key, item) => {
@@ -173,7 +173,7 @@ describe("Canonical channel history at the provider boundary", () => {
           await prepareEmbeddedAttemptSessionBoundary({
             activeSession: active.session,
             appendOnlyRuntimeContext: true,
-            attempt: { sessionId: target.sessionId, prompt: "fixture", config },
+            attempt: { prompt: "fixture", config },
             getUserTranscriptContexts: () => undefined,
             isRawModelRun: false,
             preparedUserTurnMessage: undefined,
@@ -239,6 +239,7 @@ describe("Canonical channel history at the provider boundary", () => {
               inboundUserContext: inboundText,
               inboundUserContextFragment: inboundFragment,
               isBareSessionReset: false,
+              startupAction: "new",
             });
             historyReads.push({
               canonicalEntries:
@@ -376,8 +377,8 @@ describe("Canonical channel history at the provider boundary", () => {
               .slice(1, 3)
               .map(
                 (p, index) =>
-                  canonical(p.messages.slice(0, payloads[index].messages.length)) ===
-                  canonical(payloads[index].messages),
+                  canonical(p.messages.slice(0, payloads[index]!.messages.length)) ===
+                  canonical(payloads[index]!.messages),
               ),
             signaturesInFinalRequest: occurrences(
               payloads[2],
