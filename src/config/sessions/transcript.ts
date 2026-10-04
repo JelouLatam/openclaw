@@ -11,6 +11,7 @@ import {
   scopeLegacySessionKeyToAgent,
 } from "../../routing/session-key.js";
 import { ASSISTANT_DISPLAY_CONTENT_FIELD } from "../../shared/assistant-display-content.js";
+import { attachCanonicalTranscriptHistorySource } from "../../shared/canonical-history.js";
 import {
   extractAssistantPhaseText,
   extractFirstTextBlock,
@@ -126,6 +127,8 @@ export type SessionRecentConversationText = {
 };
 
 type ReadRecentSessionConversationTextOptions = {
+  /** Internal producer provenance; never serialized into transcript rows. */
+  canonicalHistoryProvenance?: boolean;
   beforeTimestampMs?: number;
   includeCronDirectDeliveryContext?: boolean;
   limit?: number;
@@ -271,6 +274,9 @@ async function readRecentUserAssistantTextFromSqliteTranscript(
         for (const event of page.events.toReversed()) {
           const entry = extractRecentConversationText(event.event, options);
           if (entry && isWithinTranscriptWindow(entry.timestamp, options)) {
+            if (options.canonicalHistoryProvenance) {
+              attachCanonicalTranscriptHistorySource(entry, scope, event.event);
+            }
             recent.push(entry);
             if (recent.length >= limit) {
               break;

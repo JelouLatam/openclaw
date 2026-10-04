@@ -3,6 +3,11 @@
  */
 import type { Context, UserMessage } from "../../../llm/types.js";
 import {
+  hasCanonicalHistoryProjection,
+  projectCanonicalHistoryText,
+  type CanonicalHistorySource,
+} from "../../../shared/canonical-history.js";
+import {
   escapeInternalRuntimeContextDelimiters,
   INTERNAL_RUNTIME_CONTEXT_BEGIN,
   INTERNAL_RUNTIME_CONTEXT_END,
@@ -131,7 +136,7 @@ export function buildRuntimeContextCustomMessage(
   if (!trimmedRuntimeContext) {
     return undefined;
   }
-  return {
+  const message: RuntimeContextCustomMessage = {
     role: "custom",
     customType: OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE,
     content: buildRuntimeContextMessageContent(trimmedRuntimeContext),
@@ -142,6 +147,56 @@ export function buildRuntimeContextCustomMessage(
       ...(fragments?.length ? { fragments } : {}),
     },
     timestamp: Date.now(),
+  };
+  if (fragments?.some(hasCanonicalHistoryProjection)) {
+    pendingCanonicalFragments.set(message, {
+      content: message.content,
+      fragments: fragments.slice(),
+    });
+  }
+  return message;
+}
+
+export function hasPendingCanonicalHistory(message: object): boolean {
+  return pendingCanonicalFragments.has(message);
+}
+
+const pendingCanonicalFragments = new WeakMap<
+  object,
+  {
+    content: string;
+    fragments: RuntimeContextFragment[];
+  }
+>();
+
+/** Only rebuild the current queued carrier. Original full fragments survive compaction preflight. */
+export function projectPendingCanonicalHistory<T extends { content: unknown; details?: unknown }>(
+  message: T,
+  retained: (source: CanonicalHistorySource) => boolean,
+): T {
+  const pending = pendingCanonicalFragments.get(message);
+  if (!pending || pending.content !== message.content) {
+    return message;
+  }
+  const fragments = pending.fragments.map((fragment) => ({
+    kind: fragment.kind,
+    text: projectCanonicalHistoryText(fragment, retained),
+  }));
+  const text = fragments
+    .map((fragment) => fragment.text)
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+  const content = buildRuntimeContextMessageContent(text);
+  // Detach transient render closures before this carrier becomes durable history.
+  return {
+    ...message,
+    content,
+    details: {
+      source: "openclaw-runtime-context",
+      runtimeContextCarrier: true,
+      fragments,
+    },
   };
 }
 

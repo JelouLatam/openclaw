@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { iterateSessionContextEntries } from "../../../packages/agent-core/src/harness/session/session.js";
 import type { ImageContent, TextContent } from "../../llm/types.js";
 import { attachRuntimePromptMediaFacts, type MediaFact } from "../../media/media-facts.js";
 import type { PromptImageOrderEntry } from "../../media/prompt-image-order.js";
@@ -9,7 +10,12 @@ import type {
   PersistedUserTurnMessage,
   UserTurnTranscriptRecorder,
 } from "../../sessions/user-turn-transcript.types.js";
-import { buildCurrentInboundSteeringPrompt } from "../embedded-agent-runner/run/runtime-context-prompt.js";
+import { canonicalHistoryFingerprint } from "../../shared/canonical-history.js";
+import {
+  buildCurrentInboundSteeringPrompt,
+  projectPendingCanonicalHistory,
+  hasPendingCanonicalHistory,
+} from "../embedded-agent-runner/run/runtime-context-prompt.js";
 import {
   resolvePendingRuntimeContextReplay,
   type CurrentInboundPromptContext,
@@ -65,6 +71,45 @@ export abstract class AgentSessionPrompting extends AgentSessionBase {
   override dispose(): void {
     this.promptPreparation = undefined;
     super.dispose();
+  }
+
+  private projectPendingHistory(message: CustomMessage): CustomMessage {
+    if (!hasPendingCanonicalHistory(message)) {
+      return message;
+    }
+    // Extensions and provider checkpoints can remove messages after this stage.
+    // Without a proven mapping, keep the complete backfill.
+    if (
+      this.currentExtensionRunner.hasHandlers("context") ||
+      this.currentExtensionRunner.hasHandlers("before_provider_request") ||
+      this.agent.state.messages.some((item) => item.role === "assistant" && item.providerReplay)
+    ) {
+      return projectPendingCanonicalHistory(message, () => false);
+    }
+    const target = this.sessionManager.getSessionTarget();
+    if (!target) {
+      return projectPendingCanonicalHistory(message, () => false);
+    }
+    const actual = new Set(
+      this.agent.state.messages.map(canonicalHistoryFingerprint).filter(Boolean),
+    );
+    const effective = new Map<string, string>();
+    for (const { entry } of iterateSessionContextEntries(this.sessionManager.getBranch())) {
+      if (entry.type !== "message") {
+        continue;
+      }
+      const fingerprint = canonicalHistoryFingerprint(entry.message);
+      if (fingerprint && actual.has(fingerprint)) {
+        effective.set(entry.id, fingerprint);
+      }
+    }
+    return projectPendingCanonicalHistory(
+      message,
+      (source) =>
+        source.agentId === target.agentId &&
+        source.sessionId === target.sessionId &&
+        effective.get(source.entryId) === source.fingerprint,
+    );
   }
 
   private async runAgentPrompt(messages: AgentMessage | AgentMessage[]): Promise<void> {
@@ -259,6 +304,7 @@ export abstract class AgentSessionPrompting extends AgentSessionBase {
         const pendingQueuedContextMessages = resolvePendingRuntimeContextReplay({
           messages: this.agent.state.messages,
           pendingContextMessages: this.pendingNextTurnMessages,
+          projectPendingContext: (message) => this.projectPendingHistory(message),
           persistedUserIdempotencyKey,
         }).pendingContextMessages;
         await this.checkCompaction(
@@ -288,6 +334,7 @@ export abstract class AgentSessionPrompting extends AgentSessionBase {
         resolvePendingRuntimeContextReplay({
           messages: this.agent.state.messages,
           pendingContextMessages: this.pendingNextTurnMessages,
+          projectPendingContext: (message) => this.projectPendingHistory(message),
           persistedUserIdempotencyKey,
         });
       const replayPersistedTurn = persistedUserIndex >= 0;
