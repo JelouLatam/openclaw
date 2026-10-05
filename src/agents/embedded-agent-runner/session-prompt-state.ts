@@ -7,10 +7,16 @@ import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
 import type { Message } from "../../llm/types.js";
+import {
+  isCompletionReportInputProvenance,
+  type InputProvenance,
+} from "../../sessions/input-provenance.js";
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import { getOpenClawSystemUpdateKind } from "../internal-runtime-context.js";
+import type { EmbeddedRunTrigger } from "../run-trigger.js";
 import type { AgentMessage } from "../runtime/index.js";
 import type { SessionEntry } from "../sessions/session-manager-types.js";
+import type { SilentReplyPromptMode } from "../system-prompt.types.js";
 import {
   prepareCacheTtlCheckpoint,
   serializeCacheTtlToolResultProjections,
@@ -248,6 +254,16 @@ const sessionActiveProjects = resolveGlobalSingleton(
   () => new Map<string, string[]>(),
 );
 
+type SessionConversationContext = {
+  extraSystemPrompt?: string;
+  silentReplyPromptMode?: SilentReplyPromptMode;
+};
+
+const sessionConversationContexts = resolveGlobalSingleton(
+  Symbol.for("openclaw.embeddedSessionConversationContexts"),
+  () => new Map<string, SessionConversationContext>(),
+);
+
 export function createToolResultPromptProjectionState(): ToolResultPromptProjectionState {
   return {
     replacements: new Map(),
@@ -412,12 +428,53 @@ export function prepareEmbeddedSessionActiveProjectKeys(
   return [...keys];
 }
 
+/**
+ * Completion reports arrive without the conversation context their session's
+ * user turns carry in the system prompt's dynamic suffix. Omitting it there
+ * re-caches the whole history, and the next user turn re-caches it again.
+ */
+export function resolveEmbeddedSessionConversationContext(
+  params: SessionConversationContext & {
+    sessionId: string;
+    trigger?: EmbeddedRunTrigger;
+    inputProvenance?: InputProvenance;
+  },
+): SessionConversationContext {
+  const current = {
+    extraSystemPrompt: params.extraSystemPrompt,
+    silentReplyPromptMode: params.silentReplyPromptMode,
+  };
+  const provenanceKind = params.inputProvenance?.kind;
+  if (
+    params.trigger === "user" &&
+    (provenanceKind === undefined || provenanceKind === "external_user")
+  ) {
+    sessionConversationContexts.delete(params.sessionId);
+    sessionConversationContexts.set(params.sessionId, current);
+    pruneMapToMaxSize(sessionConversationContexts, MAX_SESSION_PROMPT_STATES);
+    return current;
+  }
+  const recorded = sessionConversationContexts.get(params.sessionId);
+  if (
+    !recorded ||
+    params.extraSystemPrompt?.trim() ||
+    !isCompletionReportInputProvenance(params.inputProvenance)
+  ) {
+    return current;
+  }
+  return {
+    extraSystemPrompt: recorded.extraSystemPrompt,
+    silentReplyPromptMode: params.silentReplyPromptMode ?? recorded.silentReplyPromptMode,
+  };
+}
+
 export function clearEmbeddedSessionPromptStates(sessionIds: Iterable<string | undefined>): void {
   for (const sessionId of sessionIds) {
     const normalized = sessionId?.trim();
     if (normalized) {
       sessionPromptStates.delete(normalized);
       sessionActiveProjects.delete(normalized);
+      sessionConversationContexts.delete(normalized);
     }
   }
 }
