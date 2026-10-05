@@ -28,6 +28,7 @@ export const gatewayDatabaseWorkerTestFiles = [
   "src/gateway/control-ui-session-prs.test.ts",
   "src/gateway/control-ui.http.test.ts",
   "src/gateway/control-ui.response-authority.test.ts",
+  "src/gateway/delivery-mirror-media.test.ts",
   "src/gateway/desktop/node-observe.integration.test.ts",
   "src/gateway/device-pair-setup-completion.test.ts",
   "src/gateway/device-pairing-prune.test.ts",

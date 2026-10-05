@@ -27,9 +27,14 @@ import {
 import { getOwnedSessionTranscriptWriterFence } from "../../config/sessions/transcript-write-context.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { normalizeAccountId, resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
+import { createLazyRuntimeModule } from "../../shared/lazy-runtime.js";
 import { readTrimmedStringAlias } from "../../utils/string-readers.js";
 import { createOutboundPayloadPlan, projectOutboundPayloadPlanForMirror } from "./payloads.js";
 import { normalizeTargetForProvider } from "./target-normalization.js";
+
+const loadDeliveryMirrorMediaRuntime = createLazyRuntimeModule(
+  () => import("./delivery-mirror-media.runtime.js"),
+);
 
 type SourceReplyTranscriptMirrorParams = {
   action: string;
@@ -627,7 +632,11 @@ export async function mirrorDeliveredSourceReplyToTranscript(
   }
   const sourceTurnId = resolveCurrentSourceTurnId(params.toolContext);
   const writerFence = getOwnedSessionTranscriptWriterFence({ sessionKey: params.sessionKey });
-  const result = await appendAssistantMessageToSessionTranscript({
+  const appendMirror =
+    mirror.mediaUrls.length > 0
+      ? (await loadDeliveryMirrorMediaRuntime()).appendDeliveryMirrorToSessionTranscript
+      : appendAssistantMessageToSessionTranscript;
+  const result = await appendMirror({
     agentId: params.agentId,
     sessionKey: params.sessionKey,
     ...(params.sessionId ? { expectedSessionId: params.sessionId } : {}),
