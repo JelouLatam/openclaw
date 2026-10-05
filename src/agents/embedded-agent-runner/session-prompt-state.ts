@@ -2,8 +2,14 @@
 import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
+import {
+  isCompletionReportInputProvenance,
+  type InputProvenance,
+} from "../../sessions/input-provenance.js";
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
+import type { EmbeddedRunTrigger } from "../run-trigger.js";
 import type { AgentMessage } from "../runtime/index.js";
+import type { SilentReplyPromptMode } from "../system-prompt.types.js";
 
 type ToolResultMessage = Extract<AgentMessage, { role: "toolResult" }>;
 
@@ -19,8 +25,14 @@ export type ToolResultPromptProjectionState = {
 
 type RestoredCacheTtlMark = { mode: "soft" } | { mode: "hard"; placeholder: string };
 
+type SessionConversationContext = {
+  extraSystemPrompt?: string;
+  silentReplyPromptMode?: SilentReplyPromptMode;
+};
+
 type EmbeddedSessionPromptState = {
   activeProjectKeys: string[];
+  conversationContext?: SessionConversationContext;
   toolResults: ToolResultPromptProjectionState;
   sentUserTurnIds: Set<string>;
 };
@@ -177,6 +189,44 @@ export function prepareEmbeddedSessionActiveProjectKeys(
   }
   // Consumers use set membership today; LRU order is retained for a possible future graduated boost.
   return [...state.activeProjectKeys];
+}
+
+/**
+ * Completion reports arrive without the conversation context their session's
+ * user turns carry in the system prompt's dynamic suffix. Omitting it there
+ * re-caches the whole history, and the next user turn re-caches it again.
+ */
+export function resolveEmbeddedSessionConversationContext(
+  params: SessionConversationContext & {
+    sessionId: string;
+    trigger?: EmbeddedRunTrigger;
+    inputProvenance?: InputProvenance;
+  },
+): SessionConversationContext {
+  const current = {
+    extraSystemPrompt: params.extraSystemPrompt,
+    silentReplyPromptMode: params.silentReplyPromptMode,
+  };
+  const provenanceKind = params.inputProvenance?.kind;
+  if (
+    params.trigger === "user" &&
+    (provenanceKind === undefined || provenanceKind === "external_user")
+  ) {
+    getEmbeddedSessionPromptState(params.sessionId).conversationContext = current;
+    return current;
+  }
+  const recorded = sessionPromptStates.get(params.sessionId)?.conversationContext;
+  if (
+    !recorded ||
+    params.extraSystemPrompt?.trim() ||
+    !isCompletionReportInputProvenance(params.inputProvenance)
+  ) {
+    return current;
+  }
+  return {
+    extraSystemPrompt: recorded.extraSystemPrompt,
+    silentReplyPromptMode: params.silentReplyPromptMode ?? recorded.silentReplyPromptMode,
+  };
 }
 
 export function clearEmbeddedSessionPromptStates(sessionIds: Iterable<string | undefined>): void {
