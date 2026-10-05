@@ -11,6 +11,9 @@ const log = createSubsystemLogger("outbound/deliver");
 const loadTranscriptRuntime = createLazyRuntimeModule(
   () => import("../../config/sessions/transcript.runtime.js"),
 );
+const loadDeliveryMirrorMediaRuntime = createLazyRuntimeModule(
+  () => import("./delivery-mirror-media.runtime.js"),
+);
 
 export async function mirrorDeliveredPayloads(params: {
   delivery: DeliverOutboundPayloadsCoreParams;
@@ -39,11 +42,14 @@ export async function mirrorDeliveredPayloads(params: {
   // Transcript mirroring is best-effort bookkeeping after platform send.
   // Keep mirror failures non-fatal so callers do not retry an already-sent payload.
   try {
-    const { appendAssistantMessageToSessionTranscript } = await loadTranscriptRuntime();
+    const hasMedia = deliveredMirror.mediaUrls.some((url) => url.trim());
+    const appendMirror = hasMedia
+      ? (await loadDeliveryMirrorMediaRuntime()).appendDeliveryMirrorToSessionTranscript
+      : (await loadTranscriptRuntime()).appendAssistantMessageToSessionTranscript;
     // Fence against the session this mirror lands in, not whichever run is delivering:
     // a cross-session delivery would otherwise carry the sending run's writer claim.
     const writerFence = getOwnedSessionTranscriptWriterFence({ sessionKey: mirror.sessionKey });
-    const mirrorResult = await appendAssistantMessageToSessionTranscript({
+    const mirrorResult = await appendMirror({
       agentId: mirror.agentId,
       sessionKey: mirror.sessionKey,
       expectedSessionId: mirror.expectedSessionId,
@@ -51,7 +57,9 @@ export async function mirrorDeliveredPayloads(params: {
         ? { expectedLifecycleRevision: writerFence.expectedLifecycleRevision }
         : {}),
       ...(writerFence ? { expectedWriterRunId: writerFence.expectedWriterRunId } : {}),
-      text: mirrorText,
+      ...(hasMedia
+        ? { text: deliveredMirror.text, mediaUrls: deliveredMirror.mediaUrls }
+        : { text: mirrorText }),
       idempotencyKey: mirror.idempotencyKey,
       deliveryMirror: mirror.deliveryMirror,
       config: params.delivery.cfg,
