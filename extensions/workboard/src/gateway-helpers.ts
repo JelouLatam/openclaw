@@ -9,6 +9,7 @@ import {
   dispatchAndStartWorkboardCards,
   type WorkboardDispatchStartOptions,
 } from "./dispatcher.js";
+import { normalizeBoardId } from "./store-normalizers.js";
 import { WorkboardCardConflictError, type WorkboardStore } from "./store.js";
 import {
   resolveAgentWorkboardWorkspaceRuntime,
@@ -124,6 +125,47 @@ export async function listWorkboardCards(
 ) {
   const [cards, { boards }] = await Promise.all([store.list({ boardId }), store.listBoards()]);
   return { cards: cards.map(redactCard), boards, statuses: WORKBOARD_STATUSES };
+}
+
+type WorkboardListResult = Awaited<ReturnType<typeof listWorkboardCards>>;
+type WorkboardListRead = { cursor: string; result: Promise<WorkboardListResult> };
+// Bounds retained results when clients ask for many distinct board ids.
+const MAX_RETAINED_LIST_READS = 16;
+
+/**
+ * Every Control UI tab re-lists the whole board on each change event, so identical reads
+ * arrive in bursts. Reads that observe the same store cursor share one result; a cursor is
+ * taken before its read starts, so a write landing mid-read invalidates the entry.
+ */
+export function createWorkboardListReader(
+  store: WorkboardStore,
+  redactCard: (card: WorkboardCard) => WorkboardCard,
+): (boardId: unknown) => Promise<WorkboardListResult> {
+  const reads = new Map<string, WorkboardListRead>();
+  return async (boardId) => {
+    const key = normalizeBoardId(boardId) ?? "";
+    const cursor = await store.readCursor();
+    const current = reads.get(key);
+    if (current?.cursor === cursor) {
+      return await current.result;
+    }
+    const result = listWorkboardCards(store, boardId, redactCard);
+    const read = { cursor, result };
+    reads.delete(key);
+    reads.set(key, read);
+    for (const stale of reads.keys()) {
+      if (reads.size <= MAX_RETAINED_LIST_READS) {
+        break;
+      }
+      reads.delete(stale);
+    }
+    result.catch(() => {
+      if (reads.get(key) === read) {
+        reads.delete(key);
+      }
+    });
+    return await result;
+  };
 }
 
 export function resolveGatewayWorkboardWorkspaceAccess(params: {
