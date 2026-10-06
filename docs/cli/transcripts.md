@@ -150,7 +150,9 @@ tool. Reads are not tied to the agent session that captured the meeting.
 Operator callers can read all meetings on the Gateway. Channel callers can read
 only meetings allowed by the source provider; Discord voice reads remain within
 the caller's guild. These read permissions do not change capture or summary
-write permissions.
+write permissions. Turns without an operator or channel caller (subagent
+completion reports, heartbeats) still list the tool, so the session keeps one
+tool roster, but every action refuses.
 
 ```json validate=false
 { "action": "list", "limit": 20 }

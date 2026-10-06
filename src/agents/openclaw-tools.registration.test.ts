@@ -190,6 +190,28 @@ describe("openclaw-tools progress_card gating", () => {
     expect(disabledTools).not.toContain("transcripts");
   });
 
+  it("keeps the operator turn's transcripts tool on a settle turn but refuses to run it", async () => {
+    const capability = createCronCreatorAuthorityCapability("run-operator", { kind: "local" })!;
+    const turn = {
+      agentSessionKey: "agent:main:dashboard:completion",
+      disableMessageTool: true,
+      disablePluginTools: true,
+      wrapBeforeToolCallHook: false,
+    };
+    const operatorTurn = runWithCronCreatorAuthorityCapability(capability, () =>
+      createTestOpenClawTools({ ...turn, runId: "run-operator" }),
+    );
+    const settleTurn = createTestOpenClawTools({
+      ...turn,
+      runId: "announce:requester-settle:run-operator",
+    });
+
+    expect(toolNames(settleTurn)).toEqual(toolNames(operatorTurn));
+    await expect(
+      settleTurn.find((tool) => tool.name === "transcripts")?.execute("call", { action: "list" }),
+    ).rejects.toThrow("transcripts needs a trusted caller");
+  });
+
   it("registers task suggestions only for sessions with an actionable gateway sink", () => {
     const withoutSession = createFastToolNames({
       cwd: "/repo",

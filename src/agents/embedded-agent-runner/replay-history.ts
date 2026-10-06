@@ -24,6 +24,8 @@ import type {
 } from "../../plugins/types.js";
 import {
   annotateInterSessionPromptText,
+  buildInterSessionPromptContext,
+  type InputProvenance,
   normalizeInputProvenance,
 } from "../../sessions/input-provenance.js";
 import { hasPersistedMedia } from "../../sessions/user-turn-media.js";
@@ -44,6 +46,7 @@ import {
   shouldMergeConsecutiveUserTurns,
 } from "../embedded-agent-helpers/turns.js";
 import { resolveImageSanitizationLimits } from "../image-sanitization.js";
+import { isOpenClawRuntimeContextCustomMessage } from "../internal-runtime-context.js";
 import type { AgentMessage } from "../runtime/index.js";
 import {
   sanitizeToolCallInputs,
@@ -126,14 +129,37 @@ function createProviderReplayPluginParams(params: ProviderReplayHookParams) {
   };
 }
 
-function annotateInterSessionUserMessages(messages: AgentMessage[]): AgentMessage[] {
+/** The live turn moved this envelope into its carrier; replaying both changes the cached prefix. */
+function carriesInterSessionEnvelope(
+  message: AgentMessage | undefined,
+  provenance: InputProvenance,
+): boolean {
+  if (!isOpenClawRuntimeContextCustomMessage(message)) {
+    return false;
+  }
+  const content = (message as { content?: unknown }).content;
+  return (
+    typeof content === "string" &&
+    buildInterSessionPromptContext(provenance).fragments.every((fragment) =>
+      content.includes(fragment.text),
+    )
+  );
+}
+
+function annotateInterSessionUserMessages(
+  messages: AgentMessage[],
+  appendOnlyRuntimeContext: boolean | undefined,
+): AgentMessage[] {
   let touched = false;
-  const out = messages.map((message) => {
+  const out = messages.map((message, index) => {
     if (message?.role !== "user") {
       return message;
     }
     const provenance = normalizeInputProvenance((message as { provenance?: unknown }).provenance);
     if (provenance?.kind !== "inter_session") {
+      return message;
+    }
+    if (appendOnlyRuntimeContext && carriesInterSessionEnvelope(messages[index + 1], provenance)) {
       return message;
     }
     if (typeof message.content === "string") {
@@ -664,7 +690,10 @@ export async function sanitizeSessionHistory(params: {
       env: params.env,
       model: params.model,
     });
-  const withInterSessionMarkers = annotateInterSessionUserMessages(params.messages);
+  const withInterSessionMarkers = annotateInterSessionUserMessages(
+    params.messages,
+    policy.appendOnlyRuntimeContext,
+  );
   const signedThinkingProvider = providerRequiresSignedThinking(params.provider);
   const allowProviderOwnedThinkingReplay = shouldAllowProviderOwnedThinkingReplay({
     modelApi: params.modelApi,

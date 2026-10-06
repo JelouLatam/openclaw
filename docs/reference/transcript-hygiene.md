@@ -171,7 +171,10 @@ visible text and provenance metadata both mark the turn as inter-session
 data.
 
 During context rebuild, OpenClaw applies the same marker to older persisted
-inter-session user turns that only have provenance metadata.
+inter-session user turns that only have provenance metadata. On routes that
+replay runtime context in place (Claude with signed thinking), a turn whose
+retained runtime-context carrier already holds the marker replays without it,
+so the provider sees the same bytes it saw when the turn was live.
 
 ---
 
