@@ -40,7 +40,7 @@ import { renderTeamSessionSlots } from "./session-attention-presentation.ts";
 import type { SessionDataController } from "./session-data-controller.ts";
 import { describeSessionState, renderSessionLeadingState } from "./session-leading-indicator.ts";
 import type { SessionOrganizerController } from "./session-organizer-controller.ts";
-import type { SessionOwnerOption } from "./session-owner-chip.ts";
+import type { SessionCreatedActor, SessionOwnerOption } from "./session-owner-chip.ts";
 import { renderSessionRowBadges } from "./session-row-badges.ts";
 import { renderSidebarSessionSubtitle } from "./session-row-subtitle.ts";
 import type { SidebarMenusController } from "./sidebar-menus-controller.ts";
@@ -165,6 +165,11 @@ export function visibleSessionChildren(params: {
 }
 
 /** Compose independently owned session state and context indicators. */
+/** The Gateway projects a linked channel creator as a profile without making them the owner. */
+function linkedCreatorLeadActor(actor: SessionCreatedActor | undefined) {
+  return actor?.identity?.type === "profile" && actor.label ? actor : undefined;
+}
+
 function renderSidebarSessionIndicators(
   host: SessionListHost,
   session: SidebarRecentSession,
@@ -187,7 +192,7 @@ function renderSidebarSessionIndicators(
   const ownerActor = host.sessionOwnershipVisibility.avatars
     ? host.sessionsStatusFilter === "archived"
       ? session.archivedBy
-      : session.owner?.actor
+      : (session.owner?.actor ?? linkedCreatorLeadActor(session.createdActor))
     : undefined;
   const ownerViewing =
     ownerActor?.identity?.type === "profile"

@@ -46,6 +46,11 @@ import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel-constants.js"
 import { buildControlUiChannelAvatarUrl } from "./control-ui-contract.js";
 import { normalizeControlUiBasePath } from "./control-ui-shared.js";
 import { sessionHasAutomation } from "./session-automation-index.js";
+import {
+  linkSessionChannelParticipant,
+  linkedCreatorReplacesChannelAvatar,
+  projectLinkedSessionCreator,
+} from "./session-channel-identity-projection.js";
 import { sessionClassificationForRow } from "./session-classification.js";
 import {
   projectSessionActor,
@@ -365,6 +370,7 @@ function channelAvatarRevision(reference: string): string {
 /** Profile publications invalidate display facts independently of stored session metadata. */
 function projectSessionRowProfiles(input: ReturnType<typeof readSessionRowInputs>["inputs"]) {
   const { entry, cfg, userProfileIdentityById, configuredAgentIds, identityProjection } = input;
+  const origin = projectSessionDeliveryFields(entry?.delivery).origin;
   const owner = (identityProjection?.owner ?? projectSessionOwner)(
     entry,
     userProfileIdentityById,
@@ -376,17 +382,34 @@ function projectSessionRowProfiles(input: ReturnType<typeof readSessionRowInputs
     userProfileIdentityById,
     cfg,
   );
-  const ownerKey = owner?.actor.identity && JSON.stringify(owner.actor.identity);
-  const participants = [...projected].flatMap(([key, participant]) =>
-    key === ownerKey ? [] : [participant],
-  );
-  return {
-    createdActor: projectSessionActor(
+  const linkedCreator = projectLinkedSessionCreator(entry, origin, userProfileIdentityById);
+  const createdActor =
+    linkedCreator ??
+    projectSessionActor(
       entry?.createdActor,
       userProfileIdentityById,
       cfg,
       Boolean(sessionCreatorProfileId(entry?.createdActor)),
-    ),
+    );
+  // Without an owner, the linked creator is the row's lead face, as an owner would be.
+  const leadIdentity = owner?.actor.identity ?? linkedCreator?.identity;
+  const leadKey = leadIdentity && JSON.stringify(leadIdentity);
+  const seen = new Set(leadKey ? [leadKey] : []);
+  const participants = [...projected].flatMap(([storedKey, stored]) => {
+    const participant =
+      stored.identity.type === "remote" || stored.identity.type === "observation"
+        ? linkSessionChannelParticipant(stored, userProfileIdentityById)
+        : stored;
+    const key = participant === stored ? storedKey : JSON.stringify(participant.identity);
+    if (seen.has(key)) {
+      return [];
+    }
+    seen.add(key);
+    return [participant];
+  });
+  const avatar = normalizeOptionalString(origin?.avatar);
+  return {
+    createdActor,
     owner,
     // Keep the released v4 summary stable; expanded identities are additive for newer clients.
     participants: participants.length
@@ -397,6 +420,14 @@ function projectSessionRowProfiles(input: ReturnType<typeof readSessionRowInputs
       : undefined,
     participantCount: participants.length || undefined,
     archivedBy: projectSessionActor(entry?.archivedBy, userProfileIdentityById, cfg),
+    channelAvatarUrl:
+      avatar && !linkedCreatorReplacesChannelAvatar(entry, origin, createdActor)
+        ? buildControlUiChannelAvatarUrl(
+            normalizeControlUiBasePath(cfg.gateway?.controlUi?.basePath),
+            input.key,
+            channelAvatarRevision(avatar),
+          )
+        : undefined,
   };
 }
 
@@ -416,8 +447,7 @@ export function materializeSessionRow(input: ReturnType<typeof readSessionRowInp
   const deliveryFields = projectSessionDeliveryFields(entry?.delivery);
   const channel = deliveryFields.channel ?? parseGroupKey(key)?.channel;
   const storedOrigin = deliveryFields.origin;
-  const avatar = normalizeOptionalString(storedOrigin?.avatar);
-  const controlUiBasePath = normalizeControlUiBasePath(cfg.gateway?.controlUi?.basePath);
+  const { channelAvatarUrl, ...profiles } = projectSessionRowProfiles(input);
   const pinnedAt =
     entry?.pinnedAt !== undefined && isPinnableSessionEntry(key, entry)
       ? entry.pinnedAt
@@ -454,7 +484,7 @@ export function materializeSessionRow(input: ReturnType<typeof readSessionRowInp
     subagentRole: entry?.subagentRole,
     subagentControlScope: entry?.subagentControlScope,
     createdVia: entry?.createdVia,
-    ...projectSessionRowProfiles(input),
+    ...profiles,
     createdAt: entry?.createdAt,
     forkSource: entry?.forkSource,
     previousSessionId: entry?.previousSessionId,
@@ -463,9 +493,7 @@ export function materializeSessionRow(input: ReturnType<typeof readSessionRowInp
     autoLabel: entry?.autoLabel,
     icon: entry?.icon,
     color: entry?.color,
-    channelAvatarUrl: avatar
-      ? buildControlUiChannelAvatarUrl(controlUiBasePath, key, channelAvatarRevision(avatar))
-      : undefined,
+    channelAvatarUrl,
     category: entry?.category,
     boardFace: entry?.boardFace,
     boardPresentation: entry?.boardPresentation,

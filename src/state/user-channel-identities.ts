@@ -20,6 +20,7 @@ import type { GatewayAccessGrantRef } from "../plugins/gateway-access-policy.typ
 import { updateConfigMachineStateInDatabase } from "./config-machine-state-write.js";
 import { readConfigMachineStateRowInDatabase } from "./config-machine-state.js";
 import { withExistingOpenClawStateDatabaseReadOnly } from "./openclaw-state-db-readonly.js";
+import { tableExists } from "./openclaw-state-db-schema-helpers.js";
 import {
   runOpenClawStateWriteTransaction,
   type OpenClawStateDatabaseOptions,
@@ -429,6 +430,30 @@ export function resolveUserChannelIdentityInDatabase(
       ].toSorted(),
     };
   });
+}
+
+/** Stored profile ids are pre-merge; display readers resolve merges themselves. */
+export function listAllUserChannelIdentityLinks(
+  options: OpenClawStateDatabaseOptions = {},
+): UserChannelIdentityLink[] {
+  return (
+    withExistingOpenClawStateDatabaseReadOnly(
+      ({ db }) =>
+        tableExists(db, "user_profile_identities")
+          ? executeSqliteQuerySync(
+              db,
+              userProfilesDb(db)
+                .selectFrom("user_profile_identities")
+                .select(["subject", "profile_id"])
+                .where("provider", "=", CHANNEL_IDENTITY_PROVIDER),
+            ).rows.flatMap(({ subject, profile_id }) => {
+              const identity = readIdentity(subject);
+              return identity ? [{ profileId: profile_id, identity }] : [];
+            })
+          : [],
+      options,
+    ) ?? []
+  );
 }
 
 export function resolveUserChannelIdentity(

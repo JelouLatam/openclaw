@@ -131,6 +131,52 @@ export function registerSessionOwnershipAvatarTests() {
     expect(carolChip?.textContent?.trim()).toBe("C");
   });
 
+  it("leads a linked channel creator's row with their profile without making them the owner", async () => {
+    const gateway = createGateway({} as GatewayBrowserClient);
+    const harness = createSessionsHarness("main", [
+      "agent:main:main",
+      "agent:main:linked",
+      "agent:main:unlinked",
+    ]);
+    const result = harness.sessions.state.result;
+    const linked = result?.sessions.find((row) => row.key.endsWith(":linked"));
+    const unlinked = result?.sessions.find((row) => row.key.endsWith(":unlinked"));
+    if (!result || !linked || !unlinked) {
+      throw new Error("expected channel rows");
+    }
+    linked.createdActor = {
+      type: "human",
+      id: "UA0NZD7C1",
+      identity: { type: "profile", id: "profile-nico" },
+      label: "Nico",
+      avatarUrl: "/api/users/profile-nico/avatar?v=1",
+    };
+    unlinked.createdActor = {
+      type: "human",
+      id: "U0STRANGER",
+      identity: { type: "legacy", actorType: "human", source: null, id: "U0STRANGER" },
+    };
+    result.owners = [
+      { type: "human", id: "profile-ada", label: "Ada" },
+      { type: "human", id: "profile-bob", label: "Bob" },
+    ];
+
+    const { sidebar } = await mountSidebar(gateway, harness.sessions);
+    harness.publishList({ result, agentId: "main" });
+    await sidebar.updateComplete;
+
+    const chip = sidebar.querySelector(
+      '[data-session-key="agent:main:linked"] .session-owner-chip',
+    );
+    expect(chip?.getAttribute("aria-label")).toBe("Created by Nico");
+    expect(chip?.querySelector("img")?.getAttribute("src")).toBe(
+      "/api/users/profile-nico/avatar?v=1",
+    );
+    expect(
+      sidebar.querySelector('[data-session-key="agent:main:unlinked"] .session-owner-chip'),
+    ).toBeNull();
+  });
+
   it("uses agent faces while preserving human owner grapheme initials", async () => {
     for (const { type, label, expected } of [
       { type: "agent" as const, label: "Roboclaw", expected: null },
