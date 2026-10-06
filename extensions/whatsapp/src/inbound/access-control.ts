@@ -99,6 +99,9 @@ export async function checkInboundAccessControl(params: {
       isGroup: params.group,
       conversationId,
       senderId: accessSenderId,
+      // Only the server-stamped envelope sender (DM remoteJid, group participant) of a peer
+      // message is authenticated; fromMe covers Gateway echoes and every linked device.
+      senderAuthenticated: !params.isFromMe,
       contextBinding,
     });
   const access = await resolveChannelIngress();

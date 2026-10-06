@@ -707,3 +707,87 @@ describe("WhatsApp dmPolicy precedence", () => {
     expect(result.isSelfChat).toBe(true);
   });
 });
+
+describe("WhatsApp sender authentication", () => {
+  function matchedSubjectAuthentication(
+    result: InboundAccessControlResult,
+    list: "dm" | "group",
+  ): string[] {
+    expectAccepted(result);
+    return (result.admission.channelIngress?.state.allowlists[list].match.matchedPairs ?? []).map(
+      (pair) => pair.subjectAuthentication,
+    );
+  }
+
+  it("verifies an allowlisted phone-JID DM sender without changing the decision", async () => {
+    setAccessControlTestConfig({
+      channels: { whatsapp: { dmPolicy: "allowlist", allowFrom: ["+15550001111"] } },
+    });
+
+    const result = await checkAccess();
+
+    expect(matchedSubjectAuthentication(result, "dm")).toEqual(["verified"]);
+    expectAccepted(result);
+    expect(result.admission.senderAccess.reasonCode).toBe("dm_policy_allowlisted");
+  });
+
+  it("verifies a group participant resolved to a phone", async () => {
+    const groupJid = "120363401234567890@g.us";
+    setAccessControlTestConfig({
+      channels: {
+        whatsapp: { groupPolicy: "allowlist", groupAllowFrom: ["+15550001111"] },
+      },
+    });
+
+    const result = await checkAccess({
+      from: groupJid,
+      senderE164: "+15550001111",
+      senderJid: "15550001111@lid",
+      group: true,
+      remoteJid: groupJid,
+    });
+
+    expect(matchedSubjectAuthentication(result, "group")).toEqual(["verified"]);
+  });
+
+  it("keeps fromMe self-chat messages asserted", async () => {
+    setAccessControlTestConfig({
+      channels: {
+        whatsapp: { dmPolicy: "allowlist", allowFrom: ["+15550009999"], selfChatMode: true },
+      },
+    });
+
+    const result = await checkAccess({
+      from: "+15550009999",
+      senderE164: "+15550009999",
+      isFromMe: true,
+      remoteJid: "15550009999@s.whatsapp.net",
+    });
+
+    // Self-chat appends the linked phone to the configured allowlist, so it matches twice.
+    expect(new Set(matchedSubjectAuthentication(result, "dm"))).toEqual(new Set(["asserted"]));
+  });
+
+  it("never verifies a sender id that is not a canonical E.164 phone", async () => {
+    const { resolveWhatsAppInboundPolicy, resolveWhatsAppIngressAccess } =
+      await import("../inbound-policy.js");
+    const cfg = { channels: { whatsapp: { dmPolicy: "allowlist", allowFrom: ["*"] } } };
+    const policy = resolveWhatsAppInboundPolicy({ cfg: cfg as never, selfE164: "+15550009999" });
+
+    const pairs = async (senderId: string) =>
+      (
+        await resolveWhatsAppIngressAccess({
+          cfg: cfg as never,
+          policy,
+          isGroup: false,
+          conversationId: senderId,
+          senderId,
+          senderAuthenticated: true,
+        })
+      ).state.allowlists.dm.match.matchedPairs?.map((pair) => pair.subjectAuthentication);
+
+    expect(await pairs("+15550001111")).toEqual(["verified"]);
+    expect(await pairs("15550001111@lid")).toEqual(["asserted"]);
+    expect(await pairs("15550001111")).toEqual(["asserted"]);
+  });
+});

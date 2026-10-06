@@ -206,6 +206,43 @@ describe("linked channel identities in session rows", () => {
     });
   });
 
+  it("projects a linked WhatsApp DM sender by the E.164 sender id the ingress verifies", async () => {
+    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      const phone = "+593990000001";
+      const profileId = person("ada@example.test", "Ada Lovelace");
+      linkUserChannelIdentity(profileId, {
+        channelId: "whatsapp",
+        accountId: "atlas",
+        senderId: phone,
+      });
+      const observation = {
+        type: "observation",
+        pluginId: "whatsapp",
+        accountId: "atlas",
+        senderKind: "unknown",
+        id: phone,
+      } as const;
+      const projected = row({
+        sessionId: "whatsapp-direct",
+        updatedAt: 1,
+        createdVia: "channel",
+        createdActor: { type: "human", source: "channel", id: phone },
+        chatType: "direct",
+        participants: [{ identity: observation }],
+        delivery: normalizeSessionDeliveryState({
+          context: { channel: "whatsapp", to: phone },
+          origin: { provider: "whatsapp", chatType: "direct", from: phone, accountId: "atlas" },
+        }),
+      });
+      expect(projected.createdActor).toMatchObject({
+        id: phone,
+        identity: { type: "profile", id: profileId },
+        label: "Ada Lovelace",
+      });
+      expect(projected.participants).toBeUndefined();
+    });
+  });
+
   it("refreshes materialized rows when a link is added or removed", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const profileId = person("live@example.test", "Live Person");

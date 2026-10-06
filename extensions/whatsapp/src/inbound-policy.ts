@@ -36,6 +36,8 @@ type ResolvedWhatsAppInboundPolicy = {
   resolveConversationRequireMention: (conversationId: string) => boolean;
 };
 
+const WHATSAPP_SENDER_PHONE_KEY = "whatsapp-sender-phone";
+
 function normalizeWhatsAppIngressPhone(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -108,14 +110,20 @@ export async function resolveWhatsAppIngressAccess(params: {
   isGroup: boolean;
   conversationId: string;
   senderId?: string | null;
+  senderAuthenticated?: boolean;
   includeCommand?: boolean;
   contextBinding?: ChannelIngressContextBinding;
 }) {
+  const verifiedSender =
+    params.senderAuthenticated === true &&
+    typeof params.senderId === "string" &&
+    params.senderId !== "" &&
+    normalizeE164(params.senderId) === params.senderId;
   return await getWhatsAppRuntime().channel.inbound.ingress.resolveStable({
     channelId: "whatsapp",
     accountId: params.policy.account.accountId,
     identity: {
-      key: "whatsapp-sender-phone",
+      key: WHATSAPP_SENDER_PHONE_KEY,
       kind: "phone",
       normalize: normalizeWhatsAppIngressPhone,
       sensitivity: "pii",
@@ -123,7 +131,12 @@ export async function resolveWhatsAppIngressAccess(params: {
     },
     cfg: params.cfg,
     useDefaultPairingStore: true,
-    subject: { stableId: params.senderId ?? "" },
+    subject: {
+      stableId: params.senderId ?? "",
+      ...(verifiedSender
+        ? { authentication: { [WHATSAPP_SENDER_PHONE_KEY]: "verified" as const } }
+        : {}),
+    },
     conversation: {
       kind: params.isGroup ? "group" : "direct",
       id: params.conversationId,

@@ -478,7 +478,7 @@ async function resolveChannelMessageIngressForOwner(
   ) {
     const verifiedPrincipal =
       subject.identifiers[0]?.authentication === "verified" &&
-      subject.identifiers[0]?.kind === "stable-id" &&
+      (subject.identifiers[0]?.kind === "stable-id" || subject.identifiers[0]?.kind === "phone") &&
       subject.identifiers[0]?.value
         ? {
             channelId,

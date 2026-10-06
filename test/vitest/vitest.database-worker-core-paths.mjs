@@ -148,6 +148,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/channels/message-access/discord-native-owner.test.ts",
   "src/channels/message-access/telegram-native-acp-owner.test.ts",
   "src/channels/message-access/telegram-native-owner.test.ts",
+  "src/channels/message-access/whatsapp-requester-profile.test.ts",
   "src/auto-reply/reply/commands-acp.owner.test.ts",
   "src/auto-reply/reply/commands-config.owner.test.ts",
   "src/auto-reply/reply/commands-plugins.owner.test.ts",
