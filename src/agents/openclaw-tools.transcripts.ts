@@ -63,17 +63,26 @@ export function resolveTranscriptsTool(
     return undefined;
   }
   const caller = resolveTranscriptCaller(options ?? {});
-  if (!caller) {
-    return undefined;
-  }
-  return createTranscriptsTool({
+  const tool = createTranscriptsTool({
     agentId,
     agentChannel: options?.gatewayCallerLocal
       ? undefined
       : (options?.gatewayCallerChannel ?? options?.agentChannel),
     agentAccountId: options?.gatewayCallerAccountId ?? options?.agentAccountId,
-    caller: caller.caller,
-    ...(caller.assertCallerActive ? { assertCallerActive: caller.assertCallerActive } : {}),
+    ...caller,
     config,
   });
+  if (caller) {
+    return tool;
+  }
+  // Internal turns keep the session's tool roster so they reuse its prompt cache; the caller
+  // still gates execution.
+  return {
+    ...tool,
+    execute: async () => {
+      throw new Error(
+        "transcripts needs a trusted caller: run it from an operator turn or a channel message.",
+      );
+    },
+  };
 }
