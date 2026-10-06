@@ -235,6 +235,13 @@ export async function ensureCanonicalUserProfileForEmail(
     await write("userProfiles.ensureEmail", { email, expectedGitHubAccountId }, writeOptions),
   );
 }
+export async function createCanonicalUserProfileForEmail(
+  email: string,
+  displayName: string | null,
+  options: ProfileWriteOptions = {},
+) {
+  return unwrap(await write("userProfiles.create", { email, displayName }, options));
+}
 export async function ensureCanonicalUserProfileForTailscaleIdentity(
   identity: UserProfileWriteOperations["userProfiles.ensureTailscale"]["input"],
   options: ProfileWriteOptions = {},

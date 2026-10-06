@@ -126,6 +126,8 @@ const EXCLUDED_SCHEMA_EXPORTS = [
   "UsersLinkEmailResultSchema",
   "UsersMergeParamsSchema",
   "UsersMergeResultSchema",
+  "UsersCreateParamsSchema",
+  "UsersCreateResultSchema",
   "UsersListParamsSchema",
   "UsersListResultSchema",
   "UsersPrefsGetParamsSchema",

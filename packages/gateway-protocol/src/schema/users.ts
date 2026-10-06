@@ -100,6 +100,20 @@ export const UsersLinkEmailParamsSchema = closedObject({
 });
 export const UsersLinkEmailResultSchema = closedObject({ profile: UserProfileSchema });
 
+export const UsersCreateParamsSchema = closedObject({
+  // Matches the shape login classifies as an email; anything else is a provider subject.
+  email: Type.String({
+    minLength: 3,
+    maxLength: 320,
+    pattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+  }),
+  displayName: Type.Optional(UserProfileDisplayNameSchema),
+});
+export const UsersCreateResultSchema = closedObject({
+  profile: UserProfileSchema,
+  created: Type.Boolean(),
+});
+
 export const UsersMergeParamsSchema = closedObject({
   sourceProfileId: UserProfileIdSchema,
   targetProfileId: UserProfileIdSchema,
@@ -316,6 +330,8 @@ export type UsersSelfParams = Static<typeof UsersSelfParamsSchema>;
 export type UsersSelfResult = Static<typeof UsersSelfResultSchema>;
 export type UsersLinkEmailParams = Static<typeof UsersLinkEmailParamsSchema>;
 export type UsersLinkEmailResult = Static<typeof UsersLinkEmailResultSchema>;
+export type UsersCreateParams = Static<typeof UsersCreateParamsSchema>;
+export type UsersCreateResult = Static<typeof UsersCreateResultSchema>;
 export type UsersMergeParams = Static<typeof UsersMergeParamsSchema>;
 export type UsersMergeResult = Static<typeof UsersMergeResultSchema>;
 export type UsersLinkChannelIdentityParams = Static<typeof UsersLinkChannelIdentityParamsSchema>;

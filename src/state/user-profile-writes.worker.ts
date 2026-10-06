@@ -21,6 +21,7 @@ import {
   UserProfileOwnerError,
 } from "./user-profiles-schema.js";
 import {
+  createProfileForEmail,
   ensureGatewayOwnerProfile,
   ensureProfileForEmail,
   ensureProfileForTailscaleIdentity,
@@ -60,6 +61,10 @@ export type UserProfileWriteOperations = {
     input: { email: string; expectedGitHubAccountId?: number };
     output: UserProfileWriteResult<ReturnType<typeof ensureProfileForEmail>>;
   };
+  "userProfiles.create": {
+    input: { email: string; displayName: string | null };
+    output: UserProfileWriteResult<ReturnType<typeof createProfileForEmail>>;
+  };
   "userProfiles.ensureTailscale": {
     input: Parameters<typeof ensureProfileForTailscaleIdentity>[0];
     output: UserProfileWriteResult<ReturnType<typeof ensureProfileForTailscaleIdentity>>;
@@ -81,6 +86,7 @@ export function isUserProfileWriteCommand(command: {
     command.type === "userProfiles.linkEmail" ||
     command.type === "userProfiles.merge" ||
     command.type === "userProfiles.ensureEmail" ||
+    command.type === "userProfiles.create" ||
     command.type === "userProfiles.ensureTailscale" ||
     command.type === "userProfiles.syncGitHub" ||
     command.type === "userProfiles.ensureOwner"
@@ -235,6 +241,11 @@ export function executeUserProfileWrite(
             ...owned,
             expectedGitHubAccountId: command.input.expectedGitHubAccountId,
           }),
+        };
+      case "userProfiles.create":
+        return {
+          ok: true,
+          value: createProfileForEmail(command.input.email, command.input.displayName, owned),
         };
       case "userProfiles.ensureTailscale":
         return { ok: true, value: ensureProfileForTailscaleIdentity(command.input, owned) };

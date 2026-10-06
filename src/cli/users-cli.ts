@@ -5,7 +5,7 @@ import { sanitizeTerminalText } from "../../packages/terminal-core/src/safe-text
 import { callGatewayFromCli, type GatewayRpcOpts } from "./gateway-rpc.js";
 import { applyParentDefaultHelpAction } from "./program/parent-default-help.js";
 
-type UsersCliOpts = GatewayRpcOpts & { to?: string; into?: string };
+type UsersCliOpts = GatewayRpcOpts & { to?: string; into?: string; name?: string };
 
 const DEFAULT_USERS_TIMEOUT_MS = 10_000;
 
@@ -55,6 +55,29 @@ export function registerUsersCli(program: Command) {
           { scopes: ["operator.read"] },
         );
         writeUsersList(result, opts.json === true);
+      }),
+  );
+
+  addUsersGatewayOptions(
+    users
+      .command("create <email>")
+      .description("Create the user profile a later login with this email resolves to")
+      .option("--name <displayName>", "Display name for a newly created profile")
+      .action(async (email: string, opts: UsersCliOpts) => {
+        const result = await callGatewayFromCli(
+          "users.create",
+          opts,
+          { email, ...(opts.name !== undefined ? { displayName: opts.name } : {}) },
+          { scopes: ["operator.admin"] },
+        );
+        if (opts.json === true) {
+          process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+          return;
+        }
+        writeUsersList(result, false);
+        if (result.created === false) {
+          process.stdout.write("Profile already existed; it was not changed.\n");
+        }
       }),
   );
 

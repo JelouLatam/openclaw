@@ -421,6 +421,7 @@ openclaw [--dev] [--profile <name>] <command>
     revoke
   users
     list
+    create <email> [--name <displayName>]
     link-email <email> --to <profileId>
     merge <sourceProfileId> --into <targetProfileId>
   node

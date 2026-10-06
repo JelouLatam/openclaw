@@ -28,6 +28,8 @@ export {
   UsersLinkEmailResultSchema,
   UsersMergeParamsSchema,
   UsersMergeResultSchema,
+  UsersCreateParamsSchema,
+  UsersCreateResultSchema,
   UserChannelIdentitySchema,
   UserChannelIdentityLinkSchema,
   UsersLinkChannelIdentityParamsSchema,

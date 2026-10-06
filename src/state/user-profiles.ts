@@ -241,6 +241,54 @@ export function ensureProfileForEmail(
   return ensureProfileForEmailWithInitialName(email, null, options);
 }
 
+/**
+ * Administration pre-creates the exact profile a later login with this email resolves to.
+ * An existing alias is returned unchanged.
+ */
+export function createProfileForEmail(
+  email: string,
+  displayName: string | null,
+  options: UserProfileMutationOptions = {},
+): { profile: UserProfileListItem; created: boolean } {
+  const normalizedEmail = normalizeEmail(email);
+  ensureUserProfilesSchema(options);
+  const { db: reader } = openOpenClawStateDatabase(options);
+  const selectExistingProfile = (database: DatabaseSync) => {
+    const alias = selectUserProfileEmailAlias(database, normalizedEmail);
+    if (!alias) {
+      return undefined;
+    }
+    const profile = requireResolvedUserProfileMetadataById(database, alias.profile_id);
+    if (alias.profile_id === GATEWAY_OWNER_PROFILE_ID || profile.id === GATEWAY_OWNER_PROFILE_ID) {
+      throw new UserProfileOwnerError("merge");
+    }
+    return selectUserProfileListItemById(database, profile.id);
+  };
+  const found = runSqliteDeferredTransactionSync(reader, () => selectExistingProfile(reader));
+  if (found) {
+    return { profile: found, created: false };
+  }
+  const now = Date.now();
+  return runUserProfileWriteTransaction(
+    ({ db }) => {
+      const existing = selectExistingProfile(db);
+      if (existing) {
+        return { profile: existing, created: false };
+      }
+      const profile = ensureProfileForEmailInDatabase(
+        db,
+        normalizedEmail,
+        normalizeInitialDisplayName(displayName),
+        now,
+        options.mutation,
+      );
+      return { profile: selectUserProfileListItemById(db, profile.id), created: true };
+    },
+    options,
+    { operationLabel: "user-profiles.create" },
+  );
+}
+
 function ensureProfileForProviderIdentity(params: {
   provider: string;
   subject: string;

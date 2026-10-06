@@ -152,6 +152,34 @@ When a session has someone to credit, its system prompt lists the exact trailers
 
 Turning **Git co-author credit** off stops attribution for future runs. Gateway-managed publication also checks contributor identity and consent before each pending commit, push, or pull request write. If eligibility changes during publication, it stops before the next write and asks you to review recorded effects before requesting publication again. It does not rewrite commits that already contain the public trailer.
 
+## Creating a profile before first sign-in
+
+A profile is normally created the first time a person signs in. An administrator
+can create it earlier from the person's email, then set its name and avatar or
+link channel identities before that person ever signs in:
+
+| Method         | Parameters             | Result                  |
+| -------------- | ---------------------- | ----------------------- |
+| `users.create` | `email`, `displayName` | `profile` and `created` |
+
+The method requires `operator.admin`; `displayName` is optional. The email is
+normalized the way sign-in normalizes it (trimmed, lowercased), and the profile
+is created through the same path a first email sign-in takes, with the same
+default display name (the part before `@`) and no role. A later sign-in with
+that email through a trusted proxy, Tailscale Serve, or another email-based
+login resolves to this profile instead of creating a second one. A sign-in
+provider's name does not replace a display name that is already set.
+
+If the email already belongs to a profile, including through a merge, the
+method returns that profile unchanged with `created: false`; `displayName` is
+applied only on creation. The email must look like an address (`name@domain.tld`
+without spaces); a value that sign-in would treat as a provider login is
+rejected. An email bound to the shared **Owner** profile is refused.
+
+```bash
+openclaw users create person@example.com --name "Person Name"
+```
+
 ## Merging duplicate profiles
 
 Use [`openclaw users`](/cli/users) to list profile IDs and merge duplicate profiles

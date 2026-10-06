@@ -3,6 +3,7 @@ import {
   ErrorCodes,
   GatewayErrorDetailCodes,
   errorShape,
+  validateUsersCreateParams,
   validateUsersLinkEmailParams,
   validateUsersMergeParams,
   validateUsersListParams,
@@ -20,6 +21,7 @@ import {
   setCanonicalUserPreferences,
 } from "../../state/user-preferences.js";
 import {
+  createCanonicalUserProfileForEmail,
   linkCanonicalUserProfileEmail,
   mergeCanonicalUserProfiles,
   setCanonicalUserProfileRole,
@@ -250,6 +252,26 @@ export const usersHandlers: GatewayRequestHandlers = {
       refreshConnectedProfile(context, profile, display);
       broadcastChatMetadataChanged(context);
       respond(true, { profile });
+    } catch (error) {
+      respond(false, undefined, profileError(error));
+    }
+  },
+  "users.create": async (options) => {
+    const { context, params, respond } = options;
+    if (!assertValidParams(params, validateUsersCreateParams, "users.create", respond)) {
+      return;
+    }
+    try {
+      const assertCurrent = await prepareUserProfileAdministration(options);
+      const result = await createCanonicalUserProfileForEmail(
+        params.email,
+        params.displayName ?? null,
+        { assertCurrent },
+      );
+      if (result.created) {
+        broadcastChatMetadataChanged(context);
+      }
+      respond(true, result);
     } catch (error) {
       respond(false, undefined, profileError(error));
     }

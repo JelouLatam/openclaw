@@ -89,6 +89,7 @@ describe("method scope resolution", () => {
     ["users.personalFile.set", ["operator.read"]],
     ["agents.files.set", ["operator.admin"]],
     ["users.linkEmail", ["operator.admin"]],
+    ["users.create", ["operator.admin"]],
     ["users.setDisplayName", ["operator.write"]],
     ["users.setAvatar", ["operator.write"]],
     ["taskSuggestions.list", ["operator.read"]],

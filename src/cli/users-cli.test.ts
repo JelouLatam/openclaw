@@ -48,6 +48,52 @@ describe("registerUsersCli", () => {
     );
   });
 
+  it("creates a profile by email through the admin RPC", async () => {
+    const { output, program } = createProgram({
+      profile: { id: "p-new", displayName: "Ada Lovelace", emails: ["ada@example.com"] },
+      created: true,
+    });
+
+    await program.parseAsync([
+      "node",
+      "openclaw",
+      "users",
+      "create",
+      "Ada@example.com",
+      "--name",
+      "Ada Lovelace",
+    ]);
+
+    expect(callGatewayFromCli).toHaveBeenCalledWith(
+      "users.create",
+      expect.objectContaining({ name: "Ada Lovelace" }),
+      { email: "Ada@example.com", displayName: "Ada Lovelace" },
+      { scopes: ["operator.admin"] },
+    );
+    expect(output).toHaveBeenCalledTimes(1);
+    expect(output).toHaveBeenCalledWith("p-new\tAda Lovelace\tada@example.com\n");
+  });
+
+  it("omits the display name and reports an existing profile unchanged", async () => {
+    const { output, program } = createProgram({
+      profile: { id: "p-old", displayName: "ada", emails: ["ada@example.com"] },
+      created: false,
+    });
+
+    await program.parseAsync(["node", "openclaw", "users", "create", "ada@example.com"]);
+
+    expect(callGatewayFromCli).toHaveBeenCalledWith(
+      "users.create",
+      expect.any(Object),
+      { email: "ada@example.com" },
+      { scopes: ["operator.admin"] },
+    );
+    const text = output.mock.calls.map(([chunk]) => chunk).join("");
+    expect(text).toBe(
+      "p-old\tada\tada@example.com\nProfile already existed; it was not changed.\n",
+    );
+  });
+
   it("reports an empty user profile list", async () => {
     const { output, program } = createProgram({ profiles: [] });
 
