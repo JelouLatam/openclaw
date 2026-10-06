@@ -129,11 +129,21 @@ describe("final delivery after plugin replacement", () => {
     vi.unstubAllEnvs();
   });
 
-  it.each([false, true])(
-    "sends once through its own Gateway (structured=%s)",
-    async (structured) => {
+  it.each([
+    { structured: false, senderPreparation: false },
+    { structured: true, senderPreparation: false },
+    { structured: false, senderPreparation: true },
+    { structured: true, senderPreparation: true },
+  ])(
+    "sends once through its own Gateway (structured=$structured, senderPreparation=$senderPreparation)",
+    async ({ structured, senderPreparation }) => {
       vi.stubEnv("OPENCLAW_STATE_DIR", state.tmpDir());
       const fixture = await replacementFixture();
+      if (!senderPreparation) {
+        delete fixture.request.prepareRuntimeHandoff;
+      }
+      const successorConfig: OpenClawConfig = { ...cfg, logging: { level: "debug" } };
+      fixture.setConfig(successorConfig);
       const result = await fixture.deliver(structured);
       if (result.status === "failed") {
         throw result.error;
@@ -143,7 +153,12 @@ describe("final delivery after plugin replacement", () => {
         delivery: { visibleReplySent: true, messageIds: ["accepted-final"] },
       });
       expect(fixture.sendText).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ to: "12345", text: "Saved final answer", accountId: "default" }),
+        expect.objectContaining({
+          cfg: successorConfig,
+          to: "12345",
+          text: "Saved final answer",
+          accountId: "default",
+        }),
       );
     },
   );
@@ -155,7 +170,6 @@ describe("final delivery after plugin replacement", () => {
     "plugin-changed",
     "new-channel",
     "replaced-channel",
-    "no-sender-preparation",
     "superseded-before-send",
     "superseded-live-send",
   ] as const)("does not send or borrow the process root when %s", async (stateChange) => {
@@ -168,9 +182,8 @@ describe("final delivery after plugin replacement", () => {
         plugin: { ...entry.plugin },
       }));
     }
-    if (stateChange === "no-sender-preparation") {
-      delete fixture.request.prepareRuntimeHandoff;
-    }
+    // Optional sender preparation must not bypass the Gateway and channel continuity fences.
+    delete fixture.request.prepareRuntimeHandoff;
     if (stateChange === "closed") {
       fixture.publication.current = undefined;
     }
