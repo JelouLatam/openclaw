@@ -63,8 +63,8 @@ async function replacementFixture(options?: { newChannel?: boolean }) {
   if (!options?.newChannel) {
     old.channels.push(...current.channels);
   }
-  const setConfig = (config: OpenClawConfig) =>
-    setPluginRuntimeLoadContext(current, {
+  const setConfig = (config: OpenClawConfig, registry = current) =>
+    setPluginRuntimeLoadContext(registry, {
       rawConfig: config,
       config,
       activationSourceConfig: config,
@@ -160,6 +160,33 @@ describe("final delivery after plugin replacement", () => {
           accountId: "default",
         }),
       );
+    },
+  );
+
+  it.each([
+    { channelChanged: false, status: "handled_visible" },
+    { channelChanged: true, status: "failed" },
+  ])(
+    "compares raw configs when the reply was admitted under an account overlay (channelChanged=$channelChanged)",
+    async ({ channelChanged, status }) => {
+      vi.stubEnv("OPENCLAW_STATE_DIR", state.tmpDir());
+      const fixture = await replacementFixture();
+      delete fixture.request.prepareRuntimeHandoff;
+      fixture.setConfig(cfg, fixture.turn);
+      fixture.request.cfg = {
+        ...cfg,
+        channels: {
+          telegram: { ...cfg.channels?.telegram, groupPolicy: "open", groups: { "-100": {} } },
+        },
+      };
+      fixture.setConfig(
+        channelChanged
+          ? { channels: { telegram: { enabled: false } } }
+          : { ...cfg, logging: { level: "debug" } },
+      );
+      const result = await fixture.deliver();
+      expect(result).toMatchObject({ status });
+      expect(fixture.sendText).toHaveBeenCalledTimes(channelChanged ? 0 : 1);
     },
   );
 

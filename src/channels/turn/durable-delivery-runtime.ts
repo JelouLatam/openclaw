@@ -45,6 +45,9 @@ export function withDurableDeliveryRuntime<T>(
     return deliver(input.cfg, assertCurrent);
   }
   const cfg = getPluginRuntimeLoadContext(current)?.rawConfig;
+  // input.cfg can be a channel's account-resolved overlay (WhatsApp pins an account's groups and
+  // policies onto channels.whatsapp), which never equals any raw config: compare raw to raw.
+  const admittedCfg = getPluginRuntimeLoadContext(registry)?.rawConfig ?? input.cfg;
   const channel = current.channels.find((entry) => entry.plugin.id === input.channel);
   const prepareRuntimeHandoff = input.prepareRuntimeHandoff;
   const admittedChannel = getPluginRegistryGatewayChannelRegistration(registry, input.channel);
@@ -54,13 +57,13 @@ export function withDurableDeliveryRuntime<T>(
     admittedChannel.plugin === channel.plugin;
   if (
     !cfg ||
-    !isDeepStrictEqual(cfg.channels?.[input.channel], input.cfg.channels?.[input.channel]) ||
-    !isDeepStrictEqual(cfg.channels?.defaults, input.cfg.channels?.defaults) ||
+    !isDeepStrictEqual(cfg.channels?.[input.channel], admittedCfg.channels?.[input.channel]) ||
+    !isDeepStrictEqual(cfg.channels?.defaults, admittedCfg.channels?.defaults) ||
     !channel ||
     !retainedChannel ||
     !isDeepStrictEqual(
       cfg.plugins?.entries?.[channel.pluginId],
-      input.cfg.plugins?.entries?.[channel.pluginId],
+      admittedCfg.plugins?.entries?.[channel.pluginId],
     )
   ) {
     return reject("The reply channel changed; delivery was not started.");
