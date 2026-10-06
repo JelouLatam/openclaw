@@ -7,6 +7,9 @@ import { createGatewaySession, createWorkboardCard } from "./lib/workboard/test/
 import { workboardTestHost } from "./test/host.setup.ts";
 import { createViewContext } from "./test/host.ts";
 
+// The catalog coalesces change events that land within one second of the last refresh.
+const CATALOG_CHANGE_WAIT = 2_500;
+
 it("keeps an existing reassigned session card available without registering a session action", async () => {
   const fixture = workboardTestHost();
   const { host, connection, registrations } = fixture;
@@ -87,21 +90,29 @@ it("keeps accessories on the same recovered snapshot and retires pending activat
 
     request.mockRejectedValueOnce(new Error("Temporary read failure"));
     fixture.emit("plugin.workboard.changed", {});
-    await vi.waitFor(() => expect(request.mock.settledResults[1]?.type).toBe("rejected"));
+    await vi.waitFor(() => expect(request.mock.settledResults[1]?.type).toBe("rejected"), {
+      timeout: CATALOG_CHANGE_WAIT,
+    });
     expect(container.textContent).toContain(card.title);
 
     request.mockResolvedValueOnce({ cards: [{ ...card, metadata: { archivedAt: 1 } }], boards });
     fixture.emit("plugin.workboard.changed", {});
-    await vi.waitFor(() => expect(container.querySelector("a")).toBeNull());
+    await vi.waitFor(() => expect(container.querySelector("a")).toBeNull(), {
+      timeout: CATALOG_CHANGE_WAIT,
+    });
 
     fixture.emit("plugin.workboard.changed", {});
-    await vi.waitFor(() => expect(container.textContent).toContain(card.title));
+    await vi.waitFor(() => expect(container.textContent).toContain(card.title), {
+      timeout: CATALOG_CHANGE_WAIT,
+    });
 
     const pending = createDeferred<unknown>();
     request.mockReturnValueOnce(pending.promise);
     const count = request.mock.calls.length;
     fixture.emit("plugin.workboard.changed", {});
-    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(count + 1));
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(count + 1), {
+      timeout: CATALOG_CHANGE_WAIT,
+    });
     mounted?.dispose?.();
     dispose?.();
     disposed = true;

@@ -234,4 +234,56 @@ describe("Workboard catalog", () => {
     await vi.waitFor(() => expect(snapshots.at(-1)?.boards[0]?.id).toBe("platform"));
     runtime.dispose();
   });
+
+  it("coalesces a burst of change events into one trailing refresh", async () => {
+    vi.useFakeTimers();
+    const request = vi.fn().mockResolvedValue({ cards: [], boards: [board("ops")] });
+    const runtime = createWorkboardCatalogRuntime(() => {}, createHost(), { changeDelayMs: 1_000 });
+    const client = { request } as unknown as GatewayBrowserClient;
+
+    runtime.sync(client, true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(request).toHaveBeenCalledTimes(1);
+    runtime.handleGatewayEvent("plugin.workboard.changed");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(request).toHaveBeenCalledTimes(2);
+    for (let index = 0; index < 5; index += 1) {
+      runtime.handleGatewayEvent("plugin.workboard.changed");
+    }
+    await vi.advanceTimersByTimeAsync(999);
+    expect(request).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(request).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(request).toHaveBeenCalledTimes(3);
+    runtime.dispose();
+  });
+
+  it("defers change refreshes while the document is hidden", async () => {
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const request = vi.fn().mockResolvedValue({ cards: [], boards: [board("ops")] });
+    const runtime = createWorkboardCatalogRuntime(() => {}, createHost(), { changeDelayMs: 0 });
+    const client = { request } as unknown as GatewayBrowserClient;
+    try {
+      runtime.sync(client, true);
+      await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+      runtime.handleGatewayEvent("plugin.workboard.changed");
+      runtime.handleGatewayEvent("plugin.workboard.changed");
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 20);
+      });
+      expect(request).toHaveBeenCalledTimes(1);
+
+      visibility.mockReturnValue("visible");
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 20);
+      });
+      expect(request).toHaveBeenCalledTimes(2);
+    } finally {
+      visibility.mockRestore();
+      runtime.dispose();
+    }
+  });
 });

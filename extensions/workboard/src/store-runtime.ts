@@ -138,6 +138,15 @@ export class WorkboardStoreRuntime {
     this.emit();
   }
 
+  /**
+   * Opaque token that differs after any committed card or board write, in-process or from
+   * another connection; equal tokens mean a read would return the same rows.
+   */
+  async readCursor(): Promise<string> {
+    await this.reconcileExternalChanges();
+    return `${this.epoch}:${this.revision}:${this.mutationRevision}`;
+  }
+
   reconcileExternalChanges(): Promise<boolean> {
     return this.runOperation(async () => {
       if (!this.readDataVersion) {

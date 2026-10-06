@@ -15,6 +15,13 @@ type WorkboardCatalogRuntime = {
 };
 
 const RETRY_MS = 2_000;
+const CHANGE_DELAY_MS = 1_000;
+
+export type WorkboardCatalogOptions = { changeDelayMs?: number };
+
+function documentHidden(): boolean {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
 
 type CatalogLoad = { client: GatewayBrowserClient; promise: Promise<boolean> };
 
@@ -26,12 +33,26 @@ class WorkboardCatalog implements WorkboardCatalogRuntime {
   private connectionGeneration = 0;
   private load: CatalogLoad | null = null;
   private retryTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private changeTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private changePending = false;
   private snapshot: WorkboardCatalogSnapshot = { boards: [], ready: false };
+  private readonly changeDelayMs: number;
+  private readonly onVisibilityChange = () => {
+    if (!documentHidden()) {
+      this.scheduleChange();
+    }
+  };
 
   constructor(
     private readonly onSnapshot: (snapshot: WorkboardCatalogSnapshot) => void,
     private readonly host: WorkboardCapability,
-  ) {}
+    options: WorkboardCatalogOptions = {},
+  ) {
+    this.changeDelayMs = options.changeDelayMs ?? CHANGE_DELAY_MS;
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.onVisibilityChange);
+    }
+  }
 
   sync(client: GatewayBrowserClient | null, connected: boolean): void {
     if (this.disposed) {
@@ -51,6 +72,7 @@ class WorkboardCatalog implements WorkboardCatalogRuntime {
         invalidateWorkboardLoads(this.host);
       }
       this.clearRetry();
+      this.clearChange();
       return;
     }
     if (this.client !== client) {
@@ -66,7 +88,8 @@ class WorkboardCatalog implements WorkboardCatalogRuntime {
 
   handleGatewayEvent(event: string): void {
     if (event === WORKBOARD_CHANGED_EVENT && this.connected && this.client) {
-      this.ensureAndRecover(true);
+      this.changePending = true;
+      this.scheduleChange();
     }
   }
 
@@ -76,8 +99,39 @@ class WorkboardCatalog implements WorkboardCatalogRuntime {
     this.generation += 1;
     this.load = null;
     this.clearRetry();
+    this.clearChange();
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.onVisibilityChange);
+    }
     invalidateWorkboardLoads(this.host);
     this.host.clearCatalog();
+  }
+
+  private scheduleChange(): void {
+    if (
+      this.disposed ||
+      !this.changePending ||
+      this.changeTimer !== null ||
+      documentHidden() ||
+      !this.connected ||
+      !this.client
+    ) {
+      return;
+    }
+    this.changePending = false;
+    this.ensureAndRecover(true);
+    this.changeTimer = globalThis.setTimeout(() => {
+      this.changeTimer = null;
+      this.scheduleChange();
+    }, this.changeDelayMs);
+  }
+
+  private clearChange(): void {
+    this.changePending = false;
+    if (this.changeTimer !== null) {
+      globalThis.clearTimeout(this.changeTimer);
+      this.changeTimer = null;
+    }
   }
 
   private ensureAndRecover(force: boolean): void {
@@ -196,6 +250,7 @@ class WorkboardCatalog implements WorkboardCatalogRuntime {
 export function createWorkboardCatalogRuntime(
   onSnapshot: (snapshot: WorkboardCatalogSnapshot) => void,
   host: WorkboardCapability,
+  options?: WorkboardCatalogOptions,
 ): WorkboardCatalogRuntime {
-  return new WorkboardCatalog(onSnapshot, host);
+  return new WorkboardCatalog(onSnapshot, host, options);
 }

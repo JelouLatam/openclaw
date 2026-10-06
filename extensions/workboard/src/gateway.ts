@@ -4,7 +4,7 @@ import { redactClaimToken } from "./card-redaction.js";
 import {
   assertNoCursorAdvance,
   createWorkboardDispatchHandler,
-  listWorkboardCards,
+  createWorkboardListReader,
   readId,
   readExpectedUpdatedAt,
   registerWorkboardResultMethods,
@@ -96,12 +96,12 @@ export function registerWorkboardGatewayMethods(params: {
     redactCard: redactClaimToken,
   });
 
+  const listCards = createWorkboardListReader(store, redactClaimToken);
   registerWorkboardResultMethods(api, [
     [
       "workboard.cards.list",
       READ_SCOPE,
-      async ({ params: requestParams }) =>
-        await listWorkboardCards(store, requestParams.boardId, redactClaimToken),
+      async ({ params: requestParams }) => await listCards(requestParams.boardId),
     ],
   ]);
 
