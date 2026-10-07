@@ -1,6 +1,7 @@
 import type { SessionsCreateParams } from "../../packages/gateway-protocol/src/index.js";
 import { resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { insideGitCheckout } from "../agents/worktrees/git.js";
+import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 
 /**
@@ -32,10 +33,25 @@ export function shouldDefaultSessionWorktree(params: {
     request.catalogId ||
     request.fork ||
     request.forkFrom ||
-    request.parentSessionKey ||
+    (request.parentSessionKey && !isLineageOnlyParent(params)) ||
     request.incognito;
   if (otherSource) {
     return false;
   }
   return insideGitCheckout(resolveAgentWorkspaceDir(cfg, params.agentId));
+}
+
+/** The chat pane's `/new` names its parent for lineage only; that is not a workspace choice. */
+function isLineageOnlyParent(params: {
+  cfg: OpenClawConfig;
+  request: SessionsCreateParams;
+  agentId: string;
+}): boolean {
+  const { request } = params;
+  return (
+    request.emitCommandHooks === true &&
+    request.succeedsParent === false &&
+    request.parentSessionKey?.trim().toLowerCase() !==
+      resolveAgentMainSessionKey({ cfg: params.cfg, agentId: params.agentId }).toLowerCase()
+  );
 }

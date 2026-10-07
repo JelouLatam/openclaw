@@ -6,6 +6,7 @@ import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import { authorizeOperatorScopesForMethod } from "../method-scopes.js";
 import type { ChatSendExternalAuthorityAdmission } from "./chat-send-external-authority-contract.js";
 import { handleChatSend } from "./chat-send-handler.js";
+import { createDefaultWorktreeSessionForChatSend } from "./chat-send-worktree-default.js";
 import {
   isDirectGatewayChatUserTurn,
   resolveGatewayChatCronCreatorAuthorityAdmission,
@@ -54,9 +55,12 @@ const externalAuthorityAdmission: ChatSendExternalAuthorityAdmission = {
 };
 
 /** Authenticated external chat entry; internal re-entry must call handleChatSend directly. */
-export function handleDirectExternalChatSend(
+export async function handleDirectExternalChatSend(
   options: GatewayRequestHandlerOptions,
   onAdmissionOwned?: () => Promise<boolean>,
 ): Promise<void> {
-  return handleChatSend(options, onAdmissionOwned, externalAuthorityAdmission);
+  if (!(await createDefaultWorktreeSessionForChatSend(options))) {
+    return;
+  }
+  return await handleChatSend(options, onAdmissionOwned, externalAuthorityAdmission);
 }

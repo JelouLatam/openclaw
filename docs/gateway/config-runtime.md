@@ -47,7 +47,7 @@ Optional global boolean, default `false`. When `true`, a session a person create
 }
 ```
 
-It applies only to new sessions created by an operator connection. Requests that choose another workspace source (`cwd`, a project, a repository, `execNode`, an empty workspace, a catalog, a fork or an incognito session) or set `worktree` explicitly keep their choice. Existing sessions, the agent's main session and sessions started by `sessions_spawn` are unchanged. Agents whose workspace is not a Git checkout are unaffected.
+It applies only to new sessions created by an operator connection: through `sessions.create` (including the chat's `/new`, whose parent is lineage only) or through the first `chat.send` to a session key that has no session yet. Requests that choose another workspace source (`cwd`, a project, a repository, `execNode`, an empty workspace, a catalog, a fork or an incognito session) or set `worktree` explicitly keep their choice. Existing sessions, the agent's main session and sessions started by `sessions_spawn` are unchanged. Agents whose workspace is not a Git checkout are unaffected.
 
 ## Models
 
