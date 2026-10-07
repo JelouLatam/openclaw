@@ -554,15 +554,24 @@ export function renderCardDetailsPanel(props: WorkboardProps) {
                 ${
                   events.length
                     ? html`
-                        <h3>${t("workboard.eventsLabel")}</h3>
-                        <ol class="workboard-detail__list workboard-detail__events">
-                          ${events.map(
-                            (event) => html`<li>
-                              <span>${formatEventLabel(event)}</span>
-                              <time>${formatUpdatedTime(event.at)}</time>
-                            </li>`,
-                          )}
-                        </ol>
+                        <details
+                          class="workboard-detail__disclosure workboard-detail__events-disclosure"
+                        >
+                          <summary>
+                            <span class="workboard-detail__disclosure-chevron" aria-hidden="true"
+                              >${icons.chevronDown}</span
+                            >
+                            ${t("workboard.eventsLabel")} (${events.length})
+                          </summary>
+                          <ol class="workboard-detail__list workboard-detail__events">
+                            ${events.map(
+                              (event) => html`<li>
+                                <span>${formatEventLabel(event)}</span>
+                                <time>${formatUpdatedTime(event.at)}</time>
+                              </li>`,
+                            )}
+                          </ol>
+                        </details>
                       `
                     : nothing
                 }

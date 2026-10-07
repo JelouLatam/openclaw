@@ -2898,6 +2898,41 @@ describe("renderWorkboard", () => {
     expect(container.querySelector(".workboard-detail")?.textContent).toContain("Moved to Backlog");
   });
 
+  it("keeps card event history collapsed until it is opened", () => {
+    const { state, container, renderView } = createWorkboardView({
+      onRequestUpdate: () => undefined,
+    });
+    state.cards = [
+      createWorkboardCard({
+        title: "Tracked task",
+        status: "review",
+        updatedAt: 2,
+        events: [
+          { id: "event-1", kind: "moved", at: 1, fromStatus: "triage", toStatus: "backlog" },
+          { id: "event-2", kind: "moved", at: 2, fromStatus: "backlog", toStatus: "todo" },
+        ],
+        metadata: { comments: [{ id: "note", body: "Operator note", createdAt: 3 }] },
+      }),
+    ];
+    renderView();
+    container
+      .querySelector<HTMLButtonElement>('button[aria-label="View details"]')
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    state.detailTab = "activity";
+    renderView();
+
+    const disclosure = expectDefined(
+      container.querySelector<HTMLDetailsElement>(".workboard-detail__events-disclosure"),
+      "event history disclosure",
+    );
+    expect(disclosure.open).toBe(false);
+    expect(disclosure.querySelector("summary")?.textContent).toContain("Card events (2)");
+    expect(disclosure.querySelector(".workboard-detail__events")).not.toBeNull();
+    expect(container.querySelector(".workboard-detail__comments")?.textContent).toContain(
+      "Operator note",
+    );
+  });
+
   it("renders card metadata badges and hides archived cards", () => {
     const { state, container, renderView } = createWorkboardView();
     state.cards = [
