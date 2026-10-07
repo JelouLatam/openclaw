@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -12,7 +13,10 @@ import {
 } from "../agents/worktrees/registry.js";
 import { managedWorktrees } from "../agents/worktrees/service.js";
 import { loadSessionEntry, loadTranscriptEvents } from "../config/sessions/session-accessor.js";
-import { isSessionLifecycleMutationActive } from "../sessions/session-lifecycle-admission.js";
+import {
+  getSessionWorkAdmissionRelease,
+  isSessionLifecycleMutationActive,
+} from "../sessions/session-lifecycle-admission.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { createOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
@@ -31,6 +35,7 @@ import {
 } from "./server.sessions.create.test-support.js";
 import { loadGatewayTestConfig } from "./test-helpers.config-runtime.js";
 import { agentCommandMock, mockGetReplyFromConfigOnce, rpcReq, testState } from "./test-helpers.js";
+import { testConfigRoot } from "./test-helpers.runtime-state.js";
 import { releaseGatewaySessionStoreFixture } from "./test/server-sessions-resources.test-helpers.js";
 import { getGatewayConfigModule, directSessionReq } from "./test/server-sessions.test-helpers.js";
 
@@ -731,6 +736,132 @@ test("sessions.create preserves pending worktree intent when initial-turn admiss
     expect(findLiveRegistryWorktreeByOwner(process.env, "session", key)).toBeUndefined();
   } finally {
     await disposeSessionReadContexts();
+    testState.agentConfig = undefined;
+    await openClawState.cleanup();
+  }
+});
+
+async function withWorktreeNewSessions(enabled: boolean, run: () => Promise<void>) {
+  const configPath = path.join(testConfigRoot.value, "openclaw.json");
+  const previous = fsSync.existsSync(configPath)
+    ? await fs.readFile(configPath, "utf8")
+    : undefined;
+  const base = previous ? (JSON.parse(previous) as Record<string, unknown>) : {};
+  await fs.mkdir(path.dirname(configPath), { recursive: true });
+  await fs.writeFile(configPath, JSON.stringify({ ...base, worktreeNewSessions: enabled }));
+  try {
+    await run();
+  } finally {
+    if (previous === undefined) {
+      await fs.rm(configPath, { force: true });
+    } else {
+      await fs.writeFile(configPath, previous);
+    }
+    (await getGatewayConfigModule()).clearRuntimeConfigSnapshot();
+  }
+}
+
+async function settleSessionWork(storePath: string, sessionKey: string) {
+  const released = getSessionWorkAdmissionRelease({ scope: storePath, identities: [sessionKey] });
+  if (released) {
+    await released;
+  }
+}
+
+for (const enabled of [true, false]) {
+  test(`chat.send to a new dashboard key ${enabled ? "starts in a session worktree" : "stays on the shared checkout"} with worktreeNewSessions ${enabled ? "on" : "off"}`, async () => {
+    const openClawState = await createOpenClawTestState({
+      layout: "state-only",
+      prefix: "openclaw-chat-send-worktree-default-",
+    });
+    const workspace = await copyGitWorkspace(gitWorkspaceTemplate, openClawState.root);
+    testState.agentConfig = { workspace };
+    const { dir, storePath } = await createSessionStoreDir();
+    const sessionKey = `agent:main:dashboard:${randomUUID()}`;
+    try {
+      await withWorktreeNewSessions(enabled, async () => {
+        const { ws } = await openClient();
+        try {
+          const sent = await rpcReq<{ runId?: string; status?: string }>(ws, "chat.send", {
+            sessionKey,
+            message: "hi",
+            idempotencyKey: `first-message-${enabled}`,
+          });
+          expect(sent.ok, JSON.stringify(sent.error)).toBe(true);
+          expect(sent.payload?.status).toBe("started");
+          const worktree = findLiveRegistryWorktreeByOwner(process.env, "session", sessionKey);
+          if (enabled) {
+            expect(worktree).toMatchObject({ ownerKind: "session", ownerId: sessionKey });
+            expect(loadSessionEntry({ agentId: "main", sessionKey, storePath })).toMatchObject({
+              sessionId: expect.any(String),
+              spawnedCwd: worktree?.path,
+            });
+          } else {
+            expect(worktree).toBeUndefined();
+          }
+          await settleSessionWork(storePath, sessionKey);
+        } finally {
+          ws.close();
+        }
+      });
+    } finally {
+      await disposeSessionReadContexts();
+      await releaseGatewaySessionStoreFixture(dir);
+      await removeSessionWorktree(sessionKey);
+      testState.agentConfig = undefined;
+      await openClawState.cleanup();
+    }
+  });
+}
+
+test("sessions.create from the chat pane's /new starts in a session worktree with worktreeNewSessions", async () => {
+  const openClawState = await createOpenClawTestState({
+    layout: "state-only",
+    prefix: "openclaw-new-command-worktree-default-",
+  });
+  const workspace = await copyGitWorkspace(gitWorkspaceTemplate, openClawState.root);
+  testState.agentConfig = { workspace };
+  const { dir } = await createSessionStoreDir();
+  const keys: string[] = [];
+  try {
+    await withWorktreeNewSessions(true, async () => {
+      const { ws } = await openClient();
+      try {
+        const parent = await rpcReq<{ key?: string }>(ws, "sessions.create", {
+          agentId: "main",
+          worktree: false,
+        });
+        expect(parent.ok, JSON.stringify(parent.error)).toBe(true);
+        const parentKey = requireNonEmptyString(parent.payload?.key, "parent session key");
+        keys.push(parentKey);
+        const created = await rpcReq<{ key?: string; worktree?: { path: string } }>(
+          ws,
+          "sessions.create",
+          {
+            agentId: "main",
+            parentSessionKey: parentKey,
+            emitCommandHooks: true,
+            succeedsParent: false,
+          },
+        );
+        expect(created.ok, JSON.stringify(created.error)).toBe(true);
+        const key = requireNonEmptyString(created.payload?.key, "/new session key");
+        keys.push(key);
+        expect(findLiveRegistryWorktreeByOwner(process.env, "session", key)).toMatchObject({
+          ownerKind: "session",
+          ownerId: key,
+          path: created.payload?.worktree?.path,
+        });
+      } finally {
+        ws.close();
+      }
+    });
+  } finally {
+    await disposeSessionReadContexts();
+    await releaseGatewaySessionStoreFixture(dir);
+    for (const key of keys) {
+      await removeSessionWorktree(key);
+    }
     testState.agentConfig = undefined;
     await openClawState.cleanup();
   }
