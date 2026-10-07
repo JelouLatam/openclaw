@@ -31,7 +31,7 @@ import { isAgentMainSessionKey, requireSessionKey } from "./sessions-shared.js";
 import type { GatewayRequestHandlerOptions, GatewayRequestHandlers, RespondFn } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
-async function createAgentMainSessionForSend(
+export async function createSessionForSend(
   options: GatewayRequestHandlerOptions,
   canonicalKey: string,
 ): Promise<
@@ -194,7 +194,7 @@ async function handleSessionSend(
   }
   if (!entry?.sessionId && queueMode !== "interrupt" && isAgentMainSessionKey(cfg, canonicalKey)) {
     // Sending to an empty agent main session should create it; steering still requires an active row.
-    const created = await createAgentMainSessionForSend(options, canonicalKey);
+    const created = await createSessionForSend(options, canonicalKey);
     if (!created.ok) {
       respond(false, undefined, created.error);
       return;

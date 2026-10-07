@@ -87,6 +87,12 @@ describe("shouldDefaultSessionWorktree", () => {
       { fork: true },
       { forkFrom: "agent:client:dashboard:parent" },
       { parentSessionKey: "agent:client:dashboard:parent" },
+      { parentSessionKey: "agent:client:dashboard:parent", emitCommandHooks: true },
+      {
+        parentSessionKey: "agent:client:dashboard:parent",
+        emitCommandHooks: true,
+        succeedsParent: true,
+      },
       { incognito: true },
     ];
     for (const request of others) {
@@ -95,5 +101,39 @@ describe("shouldDefaultSessionWorktree", () => {
         JSON.stringify(request),
       ).toBe(false);
     }
+  });
+
+  it("treats the chat pane's /new as a new session, not as a workspace choice", () => {
+    const cfg = config(true);
+    const newFrom = (parentSessionKey: string) => ({
+      parentSessionKey,
+      emitCommandHooks: true,
+      succeedsParent: false,
+    });
+    expect(
+      shouldDefaultSessionWorktree({
+        ...person,
+        cfg,
+        request: newFrom("agent:client:dashboard:parent"),
+      }),
+    ).toBe(true);
+    expect(
+      shouldDefaultSessionWorktree({ ...person, cfg, request: newFrom("agent:client:main") }),
+    ).toBe(false);
+    expect(
+      shouldDefaultSessionWorktree({
+        ...person,
+        cfg,
+        request: { ...newFrom("agent:client:dashboard:parent"), worktree: false },
+      }),
+    ).toBe(false);
+    expect(
+      shouldDefaultSessionWorktree({
+        ...person,
+        cfg,
+        via: "spawn",
+        request: newFrom("agent:client:dashboard:parent"),
+      }),
+    ).toBe(false);
   });
 });
