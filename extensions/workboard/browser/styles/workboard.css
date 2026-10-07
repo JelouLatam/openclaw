@@ -3719,6 +3719,15 @@ workboard-inline-text {
   border-top: 0;
 }
 
+.workboard-detail__events-disclosure {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.workboard-detail__events-disclosure > .workboard-detail__events {
+  margin-top: 12px;
+}
+
 .workboard-detail__menu {
   position: fixed;
   inset: auto;
