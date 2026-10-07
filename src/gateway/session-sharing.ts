@@ -424,7 +424,7 @@ export function resolveSessionMutationAuthorization(params: {
           }
         : null,
       sessionId: target?.entry.sessionId?.trim() || null,
-      ...(!target && ["sessions.send", "sessions.create"].includes(params.method)
+      ...(!target && ["sessions.send", "sessions.create", "chat.send"].includes(params.method)
         ? {
             absentTarget: resolveGatewaySessionStoreTarget({
               cfg: getCfg(),
