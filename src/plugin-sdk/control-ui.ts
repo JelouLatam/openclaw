@@ -150,6 +150,11 @@ export type ControlUiPanel = {
   mount: ControlUiView<BoardGetParams>;
 };
 
+/** Opens an owned session panel for this exact conversation. */
+export type ControlUiPanelTarget = BoardGetParams & {
+  id: string;
+};
+
 export type ControlUiAction = {
   id: string;
   label: string;
@@ -251,6 +256,10 @@ export type ControlUiHost = {
     registerPage: (page: ControlUiPage) => ControlUiDisposer;
     registerNavigation: (item: ControlUiNavigationItem) => ControlUiDisposer;
     registerPanel: (panel: ControlUiPanel) => ControlUiDisposer;
+    /** Open one of this plugin's registered panels in the target conversation's native sidebar. */
+    openPanel: (target: ControlUiPanelTarget) => void;
+    /** Close one of this plugin's registered panels in the target conversation's native sidebar. */
+    closePanel: (target: ControlUiPanelTarget) => void;
     registerAction: (action: ControlUiAction) => ControlUiDisposer;
     registerAccessory: (accessory: ControlUiAccessory) => ControlUiDisposer;
     registerWidget: (widget: ControlUiWidget) => ControlUiDisposer;

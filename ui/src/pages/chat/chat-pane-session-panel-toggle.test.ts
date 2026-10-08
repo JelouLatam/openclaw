@@ -9,7 +9,10 @@ import {
   stubScreenshotMedia,
   createBrowserPanelTestMetrics,
 } from "../../components/browser/browser-panel-controller-test-support.ts";
-import { LINK_READER_PANEL_TOGGLE_EVENT } from "../../components/panel-toggle-contract.ts";
+import {
+  LINK_READER_PANEL_TOGGLE_EVENT,
+  PLUGIN_PANEL_TOGGLE_EVENT,
+} from "../../components/panel-toggle-contract.ts";
 import {
   rememberSessionPanelToggle,
   type SessionPanelToggleSlot,
@@ -348,4 +351,42 @@ it("delivers a browser card after the pane's scheduled render commits", async ()
     vi.unstubAllGlobals();
     vi.useRealTimers();
   }
+});
+
+describe("session plugin-panel intent delivery", () => {
+  it("opens only the exact conversation's plugin panel", () => {
+    const f = fixture();
+    const event = new CustomEvent(PLUGIN_PANEL_TOGGLE_EVENT, {
+      detail: {
+        agentId: "main",
+        open: true,
+        sessionKey: "session-b",
+        slot: "plugin:android-farm/android",
+      },
+    });
+    expect(f.controller.handlePlugin(event)).toBe(false);
+    expect(f.updateSidebarLayout).not.toHaveBeenCalled();
+
+    f.state.sessionKey = "session-b";
+    expect(f.controller.handlePlugin(event)).toBe(true);
+    expect(f.state.sidebarLayout.columns[0]?.panels).toEqual([
+      { id: "plugin:android-farm/android", slot: "plugin:android-farm/android" },
+    ]);
+  });
+
+  it("does not let another agent claim a global-session intent", () => {
+    const f = fixture();
+    f.state.sessionKey = "global";
+    const event = new CustomEvent(PLUGIN_PANEL_TOGGLE_EVENT, {
+      detail: {
+        agentId: "writer",
+        open: true,
+        sessionKey: "global",
+        slot: "plugin:android-farm/android",
+      },
+    });
+
+    expect(f.controller.handlePlugin(event)).toBe(false);
+    expect(f.updateSidebarLayout).not.toHaveBeenCalled();
+  });
 });
