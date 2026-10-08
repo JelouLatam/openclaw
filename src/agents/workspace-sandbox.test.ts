@@ -39,6 +39,23 @@ it("keeps cwd authority with the selected local or remote workspace owner", () =
       createSandboxTestContext(),
     ),
   ).toEqual({ workspaceDir: "/canonical", cwd: "/remote/subdir", sessionRoot: "/remote" });
+  // A spawned worktree child asks for its own recorded worktree; the projection replaces it.
+  expect(
+    resolveHarnessWorkspace(
+      "/canonical",
+      { cwd: "/worktrees/child", sessionRoot: "/worktrees/child" },
+      prepared,
+      sandbox,
+    ),
+  ).toEqual({ workspaceDir: "/private", cwd: "/private", sessionRoot: "/private" });
+  expect(() =>
+    resolveHarnessWorkspace(
+      "/canonical",
+      { cwd: "/worktrees/other", sessionRoot: "/worktrees/child" },
+      prepared,
+      sandbox,
+    ),
+  ).toThrow("cwd override");
 });
 
 it("refuses a retired admitted run before creating or preparing its workspace", async () => {
