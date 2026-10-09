@@ -1,8 +1,23 @@
 import type { GatewayBrowserClient } from "./api/gateway.ts";
 import type { WorkboardCapability } from "./lib/workboard/capability.ts";
-import { loadWorkboardCatalog } from "./lib/workboard/loading.ts";
-import { getWorkboardState, invalidateWorkboardLoads } from "./lib/workboard/runtime.ts";
-import { WORKBOARD_CHANGED_EVENT, type WorkboardBoardSummary } from "./lib/workboard/types.ts";
+import {
+  normalizeWorkboardChange,
+  noteWorkboardCardsChanged,
+  workboardChangeCardIds,
+} from "./lib/workboard/change-payload.ts";
+import { loadWorkboardCatalog, refreshWorkboardCards } from "./lib/workboard/loading.ts";
+import { normalizeCardsPayload } from "./lib/workboard/normalization.ts";
+import {
+  getWorkboardRuntime,
+  getWorkboardState,
+  invalidateWorkboardLoads,
+} from "./lib/workboard/runtime.ts";
+import {
+  WORKBOARD_CARDS_CHANGED_EVENT,
+  WORKBOARD_CHANGED_EVENT,
+  type WorkboardBoardSummary,
+  type WorkboardChange,
+} from "./lib/workboard/types.ts";
 
 type WorkboardCatalogSnapshot = {
   boards: readonly Pick<WorkboardBoardSummary, "id" | "name" | "icon" | "color">[];
@@ -10,7 +25,7 @@ type WorkboardCatalogSnapshot = {
 };
 type WorkboardCatalogRuntime = {
   sync(client: GatewayBrowserClient | null, connected: boolean): void;
-  handleGatewayEvent(event: string): void;
+  handleGatewayEvent(event: string, payload?: unknown): void;
   dispose(): void;
 };
 
@@ -35,6 +50,9 @@ class WorkboardCatalog implements WorkboardCatalogRuntime {
   private retryTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private changeTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private changePending = false;
+  private lastChange: WorkboardChange | undefined;
+  private pendingCardIds = new Set<string>();
+  private fullReloadPending = false;
   private snapshot: WorkboardCatalogSnapshot = { boards: [], ready: false };
   private readonly changeDelayMs: number;
   private readonly onVisibilityChange = () => {
@@ -61,6 +79,7 @@ class WorkboardCatalog implements WorkboardCatalogRuntime {
     const reconnecting = connected && !this.connected && this.snapshot.ready;
     if (this.connected !== connected || this.client !== client) {
       this.connectionGeneration += 1;
+      this.lastChange = undefined;
     }
     this.connected = connected;
     if (!connected || !client) {
@@ -86,11 +105,70 @@ class WorkboardCatalog implements WorkboardCatalogRuntime {
     this.ensureAndRecover(reconnecting);
   }
 
-  handleGatewayEvent(event: string): void {
+  handleGatewayEvent(event: string, payload?: unknown): void {
+    if (event === WORKBOARD_CARDS_CHANGED_EVENT) {
+      noteWorkboardCardsChanged(this.host, payload);
+      return;
+    }
     if (event === WORKBOARD_CHANGED_EVENT && this.connected && this.client) {
+      this.noteChange(payload);
       this.changePending = true;
       this.scheduleChange();
     }
+  }
+
+  private noteChange(payload: unknown): void {
+    const change = normalizeWorkboardChange(payload);
+    const previous = this.lastChange;
+    if (change && (previous?.epoch !== change.epoch || change.revision > previous.revision)) {
+      this.lastChange = change;
+    }
+    const cardIds =
+      change && previous?.epoch === change.epoch && change.revision === previous.revision + 1
+        ? workboardChangeCardIds(this.host, change)
+        : undefined;
+    if (cardIds && !this.fullReloadPending) {
+      for (const id of cardIds) {
+        this.pendingCardIds.add(id);
+      }
+    } else {
+      this.fullReloadPending = true;
+      this.pendingCardIds.clear();
+    }
+  }
+
+  private async read(client: GatewayBrowserClient): Promise<boolean> {
+    const named =
+      this.snapshot.ready && !this.fullReloadPending && this.pendingCardIds.size > 0
+        ? [...this.pendingCardIds]
+        : undefined;
+    this.pendingCardIds.clear();
+    this.fullReloadPending = false;
+    // An open Workboard page keeps the shared cards current itself.
+    if (this.snapshot.ready && getWorkboardRuntime(this.host).liveRefreshEntry?.client) {
+      if (named) {
+        return true;
+      }
+      const payload = await client.request("workboard.boards.list", {});
+      getWorkboardState(this.host).boards = normalizeCardsPayload(payload).boards;
+      return true;
+    }
+    if (
+      named &&
+      (await refreshWorkboardCards({
+        host: this.host,
+        client,
+        cardIds: named,
+        requestUpdate: this.host.notify,
+      }))
+    ) {
+      return true;
+    }
+    return await loadWorkboardCatalog({
+      host: this.host,
+      client,
+      requestUpdate: this.host.notify,
+    });
   }
 
   dispose(): void {
@@ -192,11 +270,7 @@ class WorkboardCatalog implements WorkboardCatalogRuntime {
     const generation = ++this.generation;
     const pending = (async () => {
       try {
-        const loaded = await loadWorkboardCatalog({
-          host: this.host,
-          client,
-          requestUpdate: this.host.notify,
-        });
+        const loaded = await this.read(client);
         if (
           !loaded ||
           this.disposed ||

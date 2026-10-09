@@ -13,6 +13,8 @@ import {
   deleteWorkboardCard,
   findWorkboardSession,
   getWorkboardState,
+  isWorkboardSummaryCard,
+  loadWorkboardCardDetail,
   moveWorkboardCard,
   startWorkboardCard,
   stopWorkboardCard,
@@ -199,8 +201,29 @@ export function renderEditCardAction(
     ariaHaspopup: "dialog",
     disabled: state.dispatching,
     onClick: () => {
-      openEditModal(state, card);
-      props.onRequestUpdate?.();
+      if (!isWorkboardSummaryCard(card)) {
+        openEditModal(state, card);
+        props.onRequestUpdate?.();
+        return;
+      }
+      // The edit form starts from the card's notes, which a summary card lacks.
+      const client = props.client;
+      if (!client) {
+        return;
+      }
+      void loadWorkboardCardDetail({
+        host: props.host,
+        client,
+        cardId: card.id,
+        requestUpdate: props.onRequestUpdate,
+        force: true,
+      }).then(() => {
+        const full = state.cards.find((entry) => entry.id === card.id);
+        if (full && !isWorkboardSummaryCard(full) && !state.draftOpen) {
+          openEditModal(state, full);
+          props.onRequestUpdate?.();
+        }
+      });
     },
   });
 }

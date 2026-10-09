@@ -4,7 +4,7 @@ import { createWorkboardCatalogRuntime } from "./catalog.ts";
 import { bindWorkboardHost } from "./host.ts";
 import { workboardBoardLabel } from "./lib/workboard/board-presentation.ts";
 import { createWorkboardCapability } from "./lib/workboard/capability.ts";
-import { WORKBOARD_CHANGED_EVENT } from "./lib/workboard/types.ts";
+import { WORKBOARD_CARDS_CHANGED_EVENT, WORKBOARD_CHANGED_EVENT } from "./lib/workboard/types.ts";
 import { createWorkboardPage, workboardPageTarget } from "./pages/workboard/workboard-page.ts";
 import { createWorkboardSessionAccessory } from "./session-accessory.ts";
 import { createWorkboardWidget } from "./widgets.ts";
@@ -79,8 +79,11 @@ export default defineControlUiPlugin({
       ),
       workboard.subscribe(host.ui.invalidate),
       host.subscribe(() => catalog.sync(client, host.connection.connected)),
-      host.onEvent(WORKBOARD_CHANGED_EVENT, () =>
-        catalog.handleGatewayEvent(WORKBOARD_CHANGED_EVENT),
+      host.onEvent(WORKBOARD_CARDS_CHANGED_EVENT, (payload) =>
+        catalog.handleGatewayEvent(WORKBOARD_CARDS_CHANGED_EVENT, payload),
+      ),
+      host.onEvent(WORKBOARD_CHANGED_EVENT, (payload) =>
+        catalog.handleGatewayEvent(WORKBOARD_CHANGED_EVENT, payload),
       ),
     ];
     catalog.sync(client, host.connection.connected);

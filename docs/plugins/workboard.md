@@ -446,8 +446,17 @@ Gateway RPC methods live under `workboard.*`:
 
 | Scope            | Methods                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `operator.read`  | `cards.list`, `cards.export`, `cards.diagnostics`, attachment list/get, notification event reads, `boards.list`, `cards.stats`, `cards.runs`                                                                                                                                                                                                                                                            |
+| `operator.read`  | `cards.list`, `cards.get`, `cards.export`, `cards.diagnostics`, attachment list/get, notification event reads, `boards.list`, `cards.stats`, `cards.runs`                                                                                                                                                                                                                                               |
 | `operator.write` | `cards.diagnostics.refresh`, create/captureSession/update/move/delete/comment/link/linkDependency/proof/artifact, attachment add/delete, worker log, protocol violation, claim/heartbeat/release/promote/reassign/reclaim/complete/block/unblock/start, `cards.dispatch`, `cards.bulk`, archive, `boards.upsert`/`archive`/`delete`, `cards.specify`/`decompose`, notification subscribe/delete/advance |
+
+`workboard.cards.list` returns full cards by default. Pass `view: "summary"` to get
+cards without notes, events, comments, attempts, proof, worker logs, notification
+history and bulky automation fields; each summary card carries a `summary` object
+with those records' counts and linked session keys. Summary lists leave out archived
+cards unless `includeArchived: true` is set or an included card links to them.
+`workboard.cards.get` reads one card by `id` (full, or `view: "summary"`) and answers
+`card: null` when no card has that id. The
+Control UI uses summary lists for the board and loads the full card when one opens.
 
 `workboard.cards.update`, `workboard.cards.move`, `workboard.cards.archive`, and
 `workboard.cards.delete` accept an optional `expectedUpdatedAt` request field.

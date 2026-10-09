@@ -259,7 +259,7 @@ it.each([
     ];
     move.reject(new Error("Move temporarily unavailable"));
     await vi.waitFor(() =>
-      expect(card.scopedRequest).toHaveBeenCalledWith("workboard.cards.list", {}),
+      expect(card.scopedRequest).toHaveBeenCalledWith("workboard.cards.list", { view: "summary" }),
     );
     expect(card.container.textContent).toContain("Move temporarily unavailable");
     expect(getWorkboardState(lease.runtime.owner).mutationReadiness).toBe(

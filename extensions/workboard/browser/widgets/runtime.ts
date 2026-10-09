@@ -67,7 +67,7 @@ export function acquireWidgetRuntime(host: ControlUiHost, listener: () => void) 
           current.notify();
           try {
             const snapshot = normalizeCardsPayload(
-              await current.client.request("workboard.cards.list", {}),
+              await current.client.request("workboard.cards.list", { view: "summary" }),
             );
             if (!isCurrentLoad()) {
               continue;

@@ -1,5 +1,5 @@
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
-import { WORKBOARD_STATUSES, type WorkboardUiState } from "./types.ts";
+import { WORKBOARD_STATUSES, type WorkboardChange, type WorkboardUiState } from "./types.ts";
 
 export type WorkboardHost = object;
 
@@ -27,6 +27,13 @@ type WorkboardRuntime = {
   liveRefreshPromise?: Promise<void>;
   liveRefreshRetryTimer?: ReturnType<typeof setTimeout>;
   liveRefreshEntry?: WorkboardLiveRefreshEntry;
+  liveRefreshDelayTimer?: ReturnType<typeof setTimeout>;
+  livePendingCardIds?: Set<string>;
+  liveFullRefreshPending?: boolean;
+  cardHint?: WorkboardChange & { cardIds: string[] };
+  listViewKey?: string;
+  detailLoads?: Map<string, Promise<void>>;
+  detailFailures?: Set<string>;
 };
 
 const workboardRuntimes = new WeakMap<WorkboardHost, WorkboardRuntime>();
@@ -67,6 +74,12 @@ export function stopWorkboardLiveRefresh(host: WorkboardHost): void {
     clearTimeout(runtime.liveRefreshRetryTimer);
     delete runtime.liveRefreshRetryTimer;
   }
+  if (runtime.liveRefreshDelayTimer) {
+    clearTimeout(runtime.liveRefreshDelayTimer);
+    delete runtime.liveRefreshDelayTimer;
+  }
+  delete runtime.livePendingCardIds;
+  delete runtime.liveFullRefreshPending;
   delete runtime.liveRefreshEntry;
   delete runtime.liveRefreshPromise;
   delete runtime.liveChangeEpoch;

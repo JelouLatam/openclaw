@@ -7,6 +7,9 @@ import type {
   WorkboardWriteAuthority,
 } from "./persistence-types.js";
 
+// Larger writes (bulk moves, dispatch) are cheaper to reload as one list than card by card.
+const MAX_CHANGE_CARD_IDS = 20;
+
 export class WorkboardStoreRuntime {
   private readonly operationScope = new AsyncLocalStorage<{ active: boolean }>();
   private readonly operations = new Set<Promise<unknown>>();
@@ -17,6 +20,8 @@ export class WorkboardStoreRuntime {
   private revision = 0;
   private mutationRevision = 0;
   private externalDataVersion: number | undefined;
+  // Undefined once a write since the last change touched something other than known cards.
+  private changedCardIds: Set<string> | undefined = new Set();
   private readonly listeners = new Set<(change: WorkboardChange) => void>();
   private readonly initialization: Promise<void>;
 
@@ -76,19 +81,22 @@ export class WorkboardStoreRuntime {
 
   protected track<T>(
     store: WorkboardKeyedStore<T>,
-    { notifyChanges = true }: { notifyChanges?: boolean } = {},
+    { notifyChanges = true, cards = false }: { notifyChanges?: boolean; cards?: boolean } = {},
   ): WorkboardKeyedStore<T> {
+    const cardId = (key: string) => (cards ? key : undefined);
     return {
       register: (key, value) =>
         this.trackMutation(
           () => store.register(key, value),
           () => notifyChanges,
+          cardId(key),
         ),
       lookup: (key) => this.runOperation(() => store.lookup(key)),
       delete: (key) =>
         this.trackMutation(
           () => store.delete(key),
           (deleted) => deleted && notifyChanges,
+          cardId(key),
         ),
       entries: () => this.runOperation(() => store.entries()),
     };
@@ -96,18 +104,23 @@ export class WorkboardStoreRuntime {
 
   protected trackCardStore(store: WorkboardCardStore): WorkboardCardStore {
     return {
-      ...this.track(store),
+      ...this.track(store, { cards: true }),
       entries: (scope) => this.runOperation(() => store.entries(scope)),
       registerIfAbsent: (key, value) =>
-        this.trackMutation(() => store.registerIfAbsent(key, value)),
+        this.trackMutation(() => store.registerIfAbsent(key, value), Boolean, key),
       registerIfUpdatedAt: (key, value, expectedUpdatedAt) =>
-        this.trackMutation(() => store.registerIfUpdatedAt(key, value, expectedUpdatedAt)),
+        this.trackMutation(
+          () => store.registerIfUpdatedAt(key, value, expectedUpdatedAt),
+          Boolean,
+          key,
+        ),
       deleteIfUpdatedAt: (key, expectedUpdatedAt) =>
-        this.trackMutation(() => store.deleteIfUpdatedAt(key, expectedUpdatedAt)),
+        this.trackMutation(() => store.deleteIfUpdatedAt(key, expectedUpdatedAt), Boolean, key),
       claimIfOwnerAvailable: (key, value, expectedUpdatedAt, ownerId, now) =>
         this.trackMutation(
           () => store.claimIfOwnerAvailable(key, value, expectedUpdatedAt, ownerId, now),
           (result) => result === "updated",
+          key,
         ),
       listCardStatuses: (ids) => this.runOperation(() => store.listCardStatuses(ids)),
       listBoardAggregates: () => this.runOperation(() => store.listBoardAggregates()),
@@ -119,11 +132,17 @@ export class WorkboardStoreRuntime {
   private trackMutation<T>(
     run: () => Promise<T>,
     changed: (result: T) => boolean = Boolean,
+    cardId?: string,
   ): Promise<T> {
     return this.runOperation(async () => {
       const result = await run();
       if (changed(result)) {
         this.mutationRevision += 1;
+        if (cardId === undefined) {
+          this.changedCardIds = undefined;
+        } else {
+          this.changedCardIds?.add(cardId);
+        }
       }
       return result;
     });
@@ -135,6 +154,7 @@ export class WorkboardStoreRuntime {
   }
 
   announceChangeEpoch(): void {
+    this.changedCardIds = undefined;
     this.emit();
   }
 
@@ -157,6 +177,7 @@ export class WorkboardStoreRuntime {
         return false;
       }
       this.externalDataVersion = current;
+      this.changedCardIds = undefined;
       this.emit();
       return true;
     });
@@ -203,7 +224,13 @@ export class WorkboardStoreRuntime {
   }
 
   private emit(): void {
-    const change = { epoch: this.epoch, revision: ++this.revision };
+    const cardIds = this.changedCardIds;
+    this.changedCardIds = new Set();
+    const change: WorkboardChange = {
+      epoch: this.epoch,
+      revision: ++this.revision,
+      ...(cardIds?.size && cardIds.size <= MAX_CHANGE_CARD_IDS ? { cardIds: [...cardIds] } : {}),
+    };
     for (const listener of this.listeners) {
       try {
         listener(change);

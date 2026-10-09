@@ -11,7 +11,7 @@ import {
   selectedWorkboardBoardParams,
   setWorkboardCards,
 } from "./card-state.ts";
-import { loadWorkboard } from "./loading.ts";
+import { applyListedCards, loadWorkboard, workboardListParams } from "./loading.ts";
 import { formatError } from "./normalization-utils.ts";
 import { normalizeCardPayload, normalizeCardsPayload } from "./normalization.ts";
 import {
@@ -400,9 +400,10 @@ export async function dispatchWorkboard(params: {
       "workboard.cards.dispatch",
       selectedWorkboardBoardParams(state),
     );
-    const payload = await params.client.request("workboard.cards.list", {});
+    const listParams = workboardListParams(state);
+    const payload = await params.client.request("workboard.cards.list", listParams);
     const normalized = normalizeCardsPayload(payload);
-    setWorkboardCards(state, normalized.cards);
+    applyListedCards(params, normalized.cards, listParams);
     state.statuses = normalized.statuses;
     state.lastDispatchSummary = normalizeDispatchSummary(dispatchResult);
     // A teardown may have invalidated this in-flight dispatch. Keep its cached

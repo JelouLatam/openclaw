@@ -236,10 +236,14 @@ export type WorkboardNotification = {
 };
 
 export const WORKBOARD_CHANGED_EVENT = "plugin.workboard.changed";
+/** Names the cards behind the next WORKBOARD_CHANGED_EVENT; absent when unknown. */
+export const WORKBOARD_CARDS_CHANGED_EVENT = "plugin.workboard.cards-changed";
 
 export type WorkboardChange = {
   epoch: string;
   revision: number;
+  /** Set only when every write since the previous change touched these cards and nothing else. */
+  cardIds?: string[];
 };
 
 export type WorkboardWorkspace = {
@@ -385,6 +389,20 @@ export type WorkboardCard = {
   completedAt?: number;
   events?: WorkboardEvent[];
   metadata?: WorkboardMetadata;
+  /** Present only on summary reads, which omit notes, events and history records. */
+  summary?: WorkboardCardSummary;
+};
+
+export type WorkboardCardSummary = {
+  hasNotes: boolean;
+  comments: number;
+  attempts: number;
+  failedAttempts: number;
+  proof: number;
+  workerLogs: number;
+  notifications: number;
+  events: number;
+  sessionKeys: string[];
 };
 
 export type WorkboardListResult = {

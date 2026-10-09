@@ -123,7 +123,7 @@ describe("Workboard live refresh", () => {
     state.editingCardId = null;
     resumeWorkboardLiveRefresh(host);
     await waitForFast(() =>
-      expect(client.request).toHaveBeenCalledWith("workboard.cards.list", {}),
+      expect(client.request).toHaveBeenCalledWith("workboard.cards.list", { view: "summary" }),
     );
   });
 
@@ -144,7 +144,7 @@ describe("Workboard live refresh", () => {
 
     handleWorkboardChanged(host, { epoch: "epoch-a", revision: 9 });
     await waitForFast(() =>
-      expect(client.request).toHaveBeenCalledWith("workboard.cards.list", {}),
+      expect(client.request).toHaveBeenCalledWith("workboard.cards.list", { view: "summary" }),
     );
     resumeWorkboardLiveRefresh(host);
     configureWorkboardLiveRefresh({ host, client: client as never });
@@ -176,7 +176,7 @@ describe("Workboard live refresh", () => {
     configureWorkboardLiveRefresh({ host, client: client as never });
     handleWorkboardChanged(host, { epoch: "epoch-a", revision: 1 });
     await waitForFast(() =>
-      expect(client.request).toHaveBeenCalledWith("workboard.cards.list", {}),
+      expect(client.request).toHaveBeenCalledWith("workboard.cards.list", { view: "summary" }),
     );
 
     stopWorkboardLiveRefresh(host);
@@ -212,7 +212,7 @@ describe("Workboard live refresh", () => {
     configureWorkboardLiveRefresh({ host, client: client as never });
     const loading = loadWorkboard({ host, client: client as never, force: true });
     await waitForFast(() =>
-      expect(client.request).toHaveBeenCalledWith("workboard.cards.list", {}),
+      expect(client.request).toHaveBeenCalledWith("workboard.cards.list", { view: "summary" }),
     );
 
     stopWorkboardLiveRefresh(host);

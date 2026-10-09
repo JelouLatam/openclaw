@@ -1,4 +1,5 @@
 import type { GatewaySessionRow } from "../../api/types.ts";
+import { workboardCardFailedAttemptCount, workboardCardProofCount } from "./card-summary.ts";
 import { getWorkboardLifecycle } from "./lifecycle.ts";
 import type { WorkboardCard, WorkboardHealthKey, WorkboardUiState } from "./types.ts";
 
@@ -6,7 +7,7 @@ const WORKBOARD_RECENT_DONE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 function hasWorkboardProofEvidence(card: WorkboardCard): boolean {
   return Boolean(
-    card.metadata?.proof?.length ||
+    workboardCardProofCount(card) ||
     card.metadata?.artifacts?.length ||
     card.metadata?.attachments?.length,
   );
@@ -16,12 +17,7 @@ function countCardFailedAttempts(card: WorkboardCard): number {
   if (card.metadata?.failureCount !== undefined) {
     return card.metadata.failureCount;
   }
-  return (
-    card.metadata?.attempts?.filter(
-      (attempt) =>
-        attempt.status === "failed" || attempt.status === "blocked" || attempt.status === "stopped",
-    ).length ?? 0
-  );
+  return workboardCardFailedAttemptCount(card);
 }
 
 export function workboardCardMatchesHealthKey(

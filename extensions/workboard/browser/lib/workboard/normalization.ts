@@ -1,4 +1,5 @@
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { normalizeCardSummary } from "./card-summary.ts";
 import {
   normalizeEvents,
   normalizeExecution,
@@ -72,6 +73,7 @@ function normalizeCard(value: unknown): WorkboardCard | null {
   const execution = normalizeExecution(value.execution);
   const events = normalizeEvents(value.events);
   const metadata = normalizeMetadata(value.metadata);
+  const summary = normalizeCardSummary(value.summary);
   return {
     id,
     title,
@@ -93,6 +95,7 @@ function normalizeCard(value: unknown): WorkboardCard | null {
     ...(typeof value.completedAt === "number" ? { completedAt: value.completedAt } : {}),
     ...(events.length ? { events } : {}),
     ...(metadata ? { metadata } : {}),
+    ...(summary ? { summary } : {}),
   };
 }
 
