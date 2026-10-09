@@ -81,6 +81,39 @@ it("loads and refreshes cards through the plugin's authenticated host", async ()
   expect(page.container.textContent).not.toContain("Initial card");
 });
 
+it("loads the full copy of a summary card when it opens", async () => {
+  const page = mountPage({ connected: true });
+  await vi.waitFor(() => expect(page.container.textContent).toContain("Initial card"));
+  const full = createWorkboardCard({ id: "light", title: "Light card", notes: "Gateway notes" });
+  const { notes: _notes, ...light } = full;
+  page.cards([
+    {
+      ...light,
+      summary: {
+        hasNotes: true,
+        comments: 0,
+        attempts: 0,
+        failedAttempts: 0,
+        proof: 0,
+        workerLogs: 0,
+        notifications: 0,
+        events: 0,
+        sessionKeys: [],
+      },
+    },
+  ]);
+  const listed = expectDefined(page.request.getMockImplementation(), "request mock");
+  page.request.mockImplementation(async (method, params) =>
+    method === "workboard.cards.get" ? { card: full } : await listed(method, params),
+  );
+  page.fixture.emit("plugin.workboard.changed", { epoch: "current", revision: 1 });
+  await vi.waitFor(() => expect(page.container.textContent).toContain("Light card"));
+
+  expectDefined(page.container.querySelector<HTMLElement>(".workboard-card"), "card").click();
+  await vi.waitFor(() => expect(page.container.textContent).toContain("Gateway notes"));
+  expect(page.request).toHaveBeenCalledWith("workboard.cards.get", { id: "light" });
+});
+
 it.each(["main", "writer"])(
   "keeps scope %s recoverable after the roster shrinks to one agent",
   async (scope) => {

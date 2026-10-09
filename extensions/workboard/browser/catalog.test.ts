@@ -5,9 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GatewayBrowserClient } from "./api/gateway.ts";
 import { createWorkboardCatalogRuntime } from "./catalog.ts";
 import { createWorkboardCapability } from "./lib/workboard/capability.ts";
+import { configureWorkboardLiveRefresh } from "./lib/workboard/live-refresh.ts";
 import { loadWorkboard } from "./lib/workboard/loading.ts";
 import { moveWorkboardCard } from "./lib/workboard/mutations.ts";
-import { getWorkboardState } from "./lib/workboard/runtime.ts";
+import { getWorkboardState, stopWorkboardLiveRefresh } from "./lib/workboard/runtime.ts";
 import { createWorkboardCard } from "./lib/workboard/test/index-helpers.ts";
 type WorkboardCatalogSnapshot = Parameters<Parameters<typeof createWorkboardCatalogRuntime>[0]>[0];
 
@@ -284,6 +285,55 @@ describe("Workboard catalog", () => {
     } finally {
       visibility.mockRestore();
       runtime.dispose();
+    }
+  });
+
+  it("reads only named cards and leaves them to an open Workboard page", async () => {
+    const card = createWorkboardCard();
+    const request = vi.fn(async (method: string) =>
+      method === "workboard.cards.get"
+        ? { card: { ...card, title: "Renamed", updatedAt: 2 } }
+        : { cards: [card], boards: [board("ops")] },
+    );
+    const host = createHost();
+    const runtime = createWorkboardCatalogRuntime(() => {}, host, { changeDelayMs: 0 });
+    const client = { request } as unknown as GatewayBrowserClient;
+    const change = (revision: number, cardIds?: string[]) => {
+      if (cardIds) {
+        runtime.handleGatewayEvent("plugin.workboard.cards-changed", {
+          epoch: "epoch-a",
+          revision,
+          cardIds,
+        });
+      }
+      runtime.handleGatewayEvent("plugin.workboard.changed", { epoch: "epoch-a", revision });
+    };
+    const calls = () => request.mock.calls.map(([method]) => method);
+    try {
+      runtime.sync(client, true);
+      await vi.waitFor(() => expect(host.boardsReady).toBe(true));
+      change(1);
+      await vi.waitFor(() => expect(calls()).toHaveLength(2));
+      change(2, [card.id]);
+      await vi.waitFor(() => expect(host.state.cards[0]?.title).toBe("Renamed"));
+      expect(calls()).toEqual([
+        "workboard.cards.list",
+        "workboard.cards.list",
+        "workboard.cards.get",
+      ]);
+
+      configureWorkboardLiveRefresh({ host, client });
+      change(3, [card.id]);
+      change(4);
+      await vi.waitFor(() => expect(calls()).toHaveLength(4));
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 20);
+      });
+      expect(calls().slice(3)).toEqual(["workboard.boards.list"]);
+    } finally {
+      stopWorkboardLiveRefresh(host);
+      runtime.dispose();
+      host.dispose();
     }
   });
 });

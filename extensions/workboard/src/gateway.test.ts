@@ -220,6 +220,7 @@ describe("workboard gateway methods", () => {
 
     expect([...methods.keys()]).toEqual([
       "workboard.cards.list",
+      "workboard.cards.get",
       "workboard.cards.create",
       "workboard.cards.captureSession",
       "workboard.cards.update",
@@ -268,6 +269,7 @@ describe("workboard gateway methods", () => {
       "workboard.cards.export",
     ]);
     expect(methods.get("workboard.cards.list")?.opts).toEqual({ scope: "operator.read" });
+    expect(methods.get("workboard.cards.get")?.opts).toEqual({ scope: "operator.read" });
     expect(methods.get("workboard.cards.diagnostics")?.opts).toEqual({ scope: "operator.read" });
     expect(methods.get("workboard.cards.diagnostics.refresh")?.opts).toEqual({
       scope: "operator.write",

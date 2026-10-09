@@ -14,7 +14,10 @@ import { workboardCardSessionKey } from "../../lib/workboard/card-state.ts";
 import {
   configureWorkboardLiveRefresh,
   handleWorkboardChanged,
+  isWorkboardSummaryCard,
   loadWorkboard,
+  loadWorkboardCardDetail,
+  noteWorkboardCardsChanged,
   refreshWorkboard,
   resetDraftState,
   resumeWorkboardLiveRefresh,
@@ -22,7 +25,9 @@ import {
   stopWorkboardLiveRefresh,
   type WorkboardCard,
   type WorkboardUiState,
+  WORKBOARD_CARDS_CHANGED_EVENT,
   WORKBOARD_CHANGED_EVENT,
+  workboardListViewChanged,
 } from "../../lib/workboard/index.ts";
 import { createWorkboardSessionResolver } from "../../lib/workboard/session-resolution.ts";
 import { matchesAgentScope } from "./agent-filter.ts";
@@ -177,7 +182,9 @@ export function createWorkboardPage(workboard: WorkboardCapability): ControlUiVi
       }
       if (connected && context.presented) {
         refreshActive = true;
-        const force = configureWorkboardLiveRefresh({ host: workboard, client, requestUpdate });
+        const force =
+          configureWorkboardLiveRefresh({ host: workboard, client, requestUpdate }) ||
+          workboardListViewChanged(workboard);
         void loadWorkboard({
           host: workboard,
           client,
@@ -225,6 +232,14 @@ export function createWorkboardPage(workboard: WorkboardCapability): ControlUiVi
       const focusedCard = state.draftOpen
         ? state.cards.find((card) => card.id === state.editingCardId)
         : getVisibleDetailCard(state);
+      if (focusedCard && isWorkboardSummaryCard(focusedCard) && connected && context.presented) {
+        void loadWorkboardCardDetail({
+          host: workboard,
+          client,
+          cardId: focusedCard.id,
+          requestUpdate,
+        });
+      }
       sessionResolver.sync(
         focusedCard ? workboardCardSessionKey(focusedCard) : undefined,
         connected && context.presented,
@@ -394,6 +409,9 @@ export function createWorkboardPage(workboard: WorkboardCapability): ControlUiVi
       requestUpdate();
     });
     const unsubscribeState = workboard.subscribe(requestUpdate);
+    const unsubscribeCardEvents = host.onEvent(WORKBOARD_CARDS_CHANGED_EVENT, (payload) => {
+      noteWorkboardCardsChanged(workboard, payload);
+    });
     const unsubscribeEvents = host.onEvent(WORKBOARD_CHANGED_EVENT, (payload) => {
       if (!disposed && connected && context.presented) {
         handleWorkboardChanged(workboard, payload);
@@ -423,6 +441,7 @@ export function createWorkboardPage(workboard: WorkboardCapability): ControlUiVi
         metadataGeneration += 1;
         unsubscribeHost();
         unsubscribeState();
+        unsubscribeCardEvents();
         unsubscribeEvents();
         unsubscribeCron();
         sessionResolver.dispose();

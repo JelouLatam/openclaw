@@ -136,6 +136,7 @@ export default {
     deleteCard: "Delete card",
     cardActions: "Card actions",
     viewDetails: "View details",
+    loadingCard: "Loading card…",
     detailTitle: "Card details",
     detailProperties: "Properties",
     detailActivity: "Activity",

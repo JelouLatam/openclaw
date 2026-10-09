@@ -83,11 +83,19 @@ describe("createWorkboardChangeEventService", () => {
 
     await service.start(context);
     listener?.({ epoch: "epoch-a", revision: 2 });
+    listener?.({ epoch: "epoch-a", revision: 3, cardIds: ["card-1"] });
     await vi.advanceTimersByTimeAsync(1000);
 
+    // Older Control UIs drop a "changed" payload with any key beyond epoch and revision.
     expect(emit.mock.calls).toEqual([
       ["changed", { epoch: "epoch-a", revision: 1 }, { scope: "operator.read" }],
       ["changed", { epoch: "epoch-a", revision: 2 }, { scope: "operator.read" }],
+      [
+        "cards-changed",
+        { epoch: "epoch-a", revision: 3, cardIds: ["card-1"] },
+        { scope: "operator.read" },
+      ],
+      ["changed", { epoch: "epoch-a", revision: 3 }, { scope: "operator.read" }],
     ]);
     expect(reconcileExternalChanges).toHaveBeenCalledOnce();
     await service.stop?.(context);

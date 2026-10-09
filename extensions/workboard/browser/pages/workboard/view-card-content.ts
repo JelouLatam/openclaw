@@ -6,6 +6,11 @@ import { t } from "../../i18n/index.ts";
 import { formatUiExternalText } from "../../lib/format-error.ts";
 import { formatDurationCompact } from "../../lib/format.ts";
 import { selectCardAlert, type CardAlert } from "../../lib/workboard/card-alerts.ts";
+import {
+  workboardCardAttemptCount,
+  workboardCardCommentCount,
+  workboardCardProofCount,
+} from "../../lib/workboard/card-summary.ts";
 import type { WorkboardCard, WorkboardLifecycle } from "../../lib/workboard/index.ts";
 import { cardAgentLabel } from "./agent-filter.ts";
 import { cardRelativeTime } from "./view-card-time.ts";
@@ -209,14 +214,14 @@ export function renderCardMeta(card: WorkboardCard, archived: boolean) {
 
 export function renderCardCounts(card: WorkboardCard) {
   const metadata = card.metadata;
-  const attempts = metadata?.attempts?.length ?? 0;
+  const attempts = workboardCardAttemptCount(card);
   const counts: { count: number; label: string; icon: TemplateResult }[] = [
     {
-      count: metadata?.comments?.length ?? 0,
+      count: workboardCardCommentCount(card),
       label: "workboard.badgeComments",
       icon: icons.messageSquare,
     },
-    { count: metadata?.proof?.length ?? 0, label: "workboard.badgeProof", icon: icons.fileText },
+    { count: workboardCardProofCount(card), label: "workboard.badgeProof", icon: icons.fileText },
     {
       count: (metadata?.artifacts?.length ?? 0) + (metadata?.attachments?.length ?? 0),
       label: "workboard.cardFiles",

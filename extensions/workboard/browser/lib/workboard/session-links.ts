@@ -37,6 +37,7 @@ function cardSessionKeys(card: WorkboardCard): string[] {
     card.execution?.sessionKey,
     ...(card.metadata?.attempts?.map((attempt) => attempt.sessionKey) ?? []),
     ...(card.events?.map((event) => event.sessionKey) ?? []),
+    ...(card.summary?.sessionKeys ?? []),
   ]
     .filter((key): key is string => typeof key === "string")
     .map(normalizeSessionKeyForUiComparison)

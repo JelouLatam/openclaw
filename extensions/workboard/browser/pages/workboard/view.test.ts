@@ -733,6 +733,35 @@ describe("renderWorkboard", () => {
     },
   );
 
+  it("shows a loading drawer, not editable fields, until a summary card's full copy arrives", () => {
+    const { state, container, renderView } = createWorkboardView();
+    state.detailCardId = "card-1";
+    state.cards = [
+      {
+        ...createWorkboardCard({ title: "Light card" }),
+        summary: {
+          hasNotes: true,
+          comments: 3,
+          attempts: 0,
+          failedAttempts: 0,
+          proof: 0,
+          workerLogs: 0,
+          notifications: 0,
+          events: 4,
+          sessionKeys: [],
+        },
+      },
+    ];
+    renderView();
+    expect(container.textContent).toContain("Loading card…");
+    expect(container.querySelector("workboard-inline-text")).toBeNull();
+
+    state.cards = [createWorkboardCard({ title: "Light card", notes: "Full notes" })];
+    renderView();
+    expect(container.textContent).not.toContain("Loading card…");
+    expect(container.querySelector("workboard-inline-text")).not.toBeNull();
+  });
+
   it("mounts a session summary only when a linked Session tab is selected", () => {
     const { state, container, renderView } = createWorkboardView();
     state.detailCardId = "card-1";

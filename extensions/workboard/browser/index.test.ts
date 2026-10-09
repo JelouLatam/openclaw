@@ -51,7 +51,7 @@ it("keeps an existing reassigned session card available without registering a se
     const mounted = accessory.mount(container, createViewContext(host, context));
     disposeAccessory = () => mounted?.dispose?.();
     await vi.waitFor(() => expect(container.textContent).toContain(card.title));
-    expect(request.mock.calls).toEqual([["workboard.cards.list", {}]]);
+    expect(request.mock.calls).toEqual([["workboard.cards.list", { view: "summary" }]]);
 
     // The session accessory follows the catalog's refreshed card state.
     currentCard = {

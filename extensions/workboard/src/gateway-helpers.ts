@@ -6,6 +6,11 @@ import { asRecord, isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { OpenClawPluginApi } from "../api.js";
 import { redactClaimToken, redactDispatchResult } from "./card-redaction.js";
 import {
+  summarizeWorkboardCard,
+  withoutUnreferencedArchivedCards,
+  type WorkboardListView,
+} from "./card-summary.js";
+import {
   dispatchAndStartWorkboardCards,
   type WorkboardDispatchStartOptions,
 } from "./dispatcher.js";
@@ -132,6 +137,8 @@ type WorkboardListRead = { cursor: string; result: Promise<WorkboardListResult> 
 // Bounds retained results when clients ask for many distinct board ids.
 const MAX_RETAINED_LIST_READS = 16;
 
+export type WorkboardListReadOptions = { view?: WorkboardListView; includeArchived?: boolean };
+
 /**
  * Every Control UI tab re-lists the whole board on each change event, so identical reads
  * arrive in bursts. Reads that observe the same store cursor share one result; a cursor is
@@ -140,19 +147,32 @@ const MAX_RETAINED_LIST_READS = 16;
 export function createWorkboardListReader(
   store: WorkboardStore,
   redactCard: (card: WorkboardCard) => WorkboardCard,
-): (boardId: unknown) => Promise<WorkboardListResult> {
+): (boardId: unknown, options?: WorkboardListReadOptions) => Promise<WorkboardListResult> {
   const reads = new Map<string, WorkboardListRead>();
-  return async (boardId) => {
-    const key = normalizeBoardId(boardId) ?? "";
+  const read = async (
+    boardId: unknown,
+    options: WorkboardListReadOptions = {},
+  ): Promise<WorkboardListResult> => {
+    const summary = options.view === "summary";
+    const boardKey = normalizeBoardId(boardId) ?? "";
+    const key = summary ? `${boardKey}\0summary\0${options.includeArchived === true}` : boardKey;
     const cursor = await store.readCursor();
     const current = reads.get(key);
     if (current?.cursor === cursor) {
       return await current.result;
     }
-    const result = listWorkboardCards(store, boardId, redactCard);
-    const read = { cursor, result };
+    const result = summary
+      ? read(boardId).then((full) => ({
+          ...full,
+          cards: (options.includeArchived
+            ? full.cards
+            : withoutUnreferencedArchivedCards(full.cards)
+          ).map(summarizeWorkboardCard),
+        }))
+      : listWorkboardCards(store, boardId, redactCard);
+    const entry = { cursor, result };
     reads.delete(key);
-    reads.set(key, read);
+    reads.set(key, entry);
     for (const stale of reads.keys()) {
       if (reads.size <= MAX_RETAINED_LIST_READS) {
         break;
@@ -160,12 +180,13 @@ export function createWorkboardListReader(
       reads.delete(stale);
     }
     result.catch(() => {
-      if (reads.get(key) === read) {
+      if (reads.get(key) === entry) {
         reads.delete(key);
       }
     });
     return await result;
   };
+  return read;
 }
 
 export function resolveGatewayWorkboardWorkspaceAccess(params: {

@@ -16,6 +16,7 @@ import { workboardBoardName } from "../../lib/workboard/board-presentation.ts";
 import {
   addWorkboardCardComment,
   getWorkboardDependencyState,
+  isWorkboardSummaryCard,
   getWorkboardLifecycle,
   getWorkboardState,
   type WorkboardCard,
@@ -37,6 +38,10 @@ import {
   renderDetailRow,
   renderTechnicalDetails,
 } from "./view-card-detail-records.ts";
+import {
+  renderCardDetailsLoading,
+  workboardDetailDialogStyle,
+} from "./view-card-details-loading.ts";
 import { renderCardDiscardDialog } from "./view-card-modal.ts";
 import {
   formatEventLabel,
@@ -108,6 +113,10 @@ export function renderCardDetailsPanel(props: WorkboardProps) {
   if (!card) {
     inlineDiscardOpen.delete(state);
     return nothing;
+  }
+  if (isWorkboardSummaryCard(card)) {
+    const ids = { drawerId: workboardCardDetailDrawerId, titleId: workboardCardDetailTitleId };
+    return renderCardDetailsLoading(card, ids, () => closeCardDetails(state), props);
   }
   const drawer = detailDrawerRefs.get(state) ?? createRef<HTMLElement>();
   detailDrawerRefs.set(state, drawer);
@@ -274,8 +283,7 @@ export function renderCardDetailsPanel(props: WorkboardProps) {
       className: "drawer drawer--floating",
       label: card.title,
       description: lifecycle.session?.displayName ?? formatted.detail,
-      style:
-        "--openclaw-modal-width: 620px; --openclaw-modal-backdrop-filter: none; --wa-color-overlay-modal: rgba(0, 0, 0, 0.24);",
+      style: workboardDetailDialogStyle,
       onCancel: dismissDetails,
     },
     html`

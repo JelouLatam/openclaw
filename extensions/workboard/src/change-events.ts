@@ -34,7 +34,18 @@ export function createWorkboardChangeEventService(
         if (currentGeneration !== generation) {
           return;
         }
-        const emit = (change: WorkboardChange) => {
+        const emit = ({ cardIds, ...change }: WorkboardChange) => {
+          // Older Control UI bundles reject a "changed" payload with extra keys, so the
+          // card hint travels in its own event, delivered just before the change it names.
+          if (cardIds) {
+            gatewayEvents.emit(
+              "cards-changed",
+              { ...change, cardIds },
+              {
+                scope: "operator.read",
+              },
+            );
+          }
           gatewayEvents.emit("changed", change, {
             scope: "operator.read",
           });
