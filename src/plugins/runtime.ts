@@ -663,7 +663,6 @@ export async function clearActivePluginRegistry(
               disposePluginRegistryInstances(previousRegistry, () => state.activeRegistry, {
                 cfg,
                 runContextCleanup,
-                cleanupPersistentState: true,
               }),
             );
           }
