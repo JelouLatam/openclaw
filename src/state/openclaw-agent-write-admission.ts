@@ -29,6 +29,7 @@ export function runOpenClawAgentWriteAdmission<T>(
   reentrant = false,
   timing?: StoreWriterTiming,
   signal?: AbortSignal,
+  diagnosticOperation?: string,
 ): Promise<T> {
   const pathname = resolveOpenClawAgentSqlitePath(options);
   const identity = readDatabasePathIdentitySync(pathname);
@@ -46,7 +47,7 @@ export function runOpenClawAgentWriteAdmission<T>(
   return runQueuedStoreWrite({
     queues: admission.queues,
     storePath,
-    label: "agent database write admission",
+    label: diagnosticOperation ?? "agent database foreground write",
     // Worker callbacks inherit their parent's async context, but not its native
     // writer lock. Their foreground writes must queue, never reenter that owner.
     reentrant: reentrant && !admission.workers.has(storePath),
@@ -65,6 +66,7 @@ export function runOpenClawAgentWorkerWrite<T>(
   run: () => Promise<T>,
   timing?: StoreWriterTiming,
   signal?: AbortSignal,
+  diagnosticOperation?: string,
 ): Promise<T> {
   return runOpenClawAgentWriteAdmission(
     options,
@@ -82,5 +84,6 @@ export function runOpenClawAgentWorkerWrite<T>(
     true,
     timing,
     signal,
+    diagnosticOperation ?? "agent database worker write",
   );
 }

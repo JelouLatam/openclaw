@@ -95,6 +95,7 @@ export async function runPreparedSqliteSessionWrite<T>(
         : { result: await write.commit() };
     },
     operation,
+    { phase: "prepare" },
   );
   if (!prepared.write) {
     return { deletedEntries: 0, result: prepared.result, scope };
@@ -114,6 +115,7 @@ export async function runPreparedSqliteSessionWrite<T>(
           return await write.commit(assertHeld);
         },
         operation,
+        { phase: "commit" },
       );
     return withCommit ? await withCommit(runCommit) : await runCommit();
   };
