@@ -118,6 +118,11 @@ export function readOpenClawAgentIntegrityVerification(
   }
 }
 
+/** OPENCLAW_AGENT_INTEGRITY=deferred: current-schema databases skip the open-time full check. */
+export function isAgentIntegrityDeferred(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.OPENCLAW_AGENT_INTEGRITY === "deferred";
+}
+
 export function canReuseOpenClawAgentIntegrityVerification(
   pathname: string,
   record: OpenClawAgentIntegrityVerification | undefined,

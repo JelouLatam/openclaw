@@ -26,6 +26,7 @@ import {
 import type { OpenClawAgentSchemaPreflightResult } from "./openclaw-database-preflight.types.js";
 import {
   canReuseOpenClawAgentIntegrityVerification,
+  isAgentIntegrityDeferred,
   type readOpenClawAgentIntegrityVerification,
 } from "./openclaw-quarantine-store.js";
 import { OPENCLAW_SQLITE_BUSY_TIMEOUT_MS } from "./openclaw-state-db-contract.js";
@@ -85,10 +86,9 @@ export function inspectAgentDatabaseSchema(
         hasPendingCurrentVersionAgentDatabaseMigration(database);
       // A full integrity_check of every agent database blocks startup for
       // minutes on a large state dir with a cold page cache. Deferred, a current
-      // database takes the cached outcome: the preflight queues it for the
-      // background quick_check and the first runtime open still runs its gate.
-      const deferred =
-        process.env.OPENCLAW_STARTUP_AGENT_INTEGRITY === "deferred" && !migrationPending;
+      // database takes the cached outcome, which queues the background
+      // quick_check; the daily verifier still runs the full check.
+      const deferred = isAgentIntegrityDeferred() && !migrationPending;
       if (
         !deferred &&
         !canReuseOpenClawAgentIntegrityVerification(
