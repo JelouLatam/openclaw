@@ -95,6 +95,7 @@ import { migrateDeployedTranscriptFtsRowsInTransaction } from "./openclaw-agent-
 import { migrateTranscriptPayloadStorageInTransaction } from "./openclaw-agent-transcript-payload-migration.js";
 import {
   canReuseOpenClawAgentIntegrityVerification,
+  isAgentIntegrityDeferred,
   type OpenClawAgentIntegrityVerification,
 } from "./openclaw-quarantine-store.js";
 import { getOpenClawDatabaseMaintenanceScope } from "./openclaw-state-db-async-lifecycle.js";
@@ -157,6 +158,7 @@ export function* agentDatabaseIntegrityBeforeMutationSteps(
     const startedAt = performance.now();
     const reuseIntegrity =
       reuseRuntimeIntegrity ||
+      isAgentIntegrityDeferred() ||
       canReuseOpenClawAgentIntegrityVerification(
         pathname,
         verification,
