@@ -80,12 +80,21 @@ export function inspectAgentDatabaseSchema(
       inspection.agentSchemaMeta = readExistingAgentSchemaMeta(database);
     }
     if (input.requireStartupMigrationReadiness) {
+      const migrationPending =
+        version !== input.supportedVersion ||
+        hasPendingCurrentVersionAgentDatabaseMigration(database);
+      // A full integrity_check of every agent database blocks startup for
+      // minutes on a large state dir with a cold page cache. Deferred, a current
+      // database takes the cached outcome: the preflight queues it for the
+      // background quick_check and the first runtime open still runs its gate.
+      const deferred =
+        process.env.OPENCLAW_STARTUP_AGENT_INTEGRITY === "deferred" && !migrationPending;
       if (
+        !deferred &&
         !canReuseOpenClawAgentIntegrityVerification(
           input.pathname,
           input.startupIntegrityVerification,
-          version !== input.supportedVersion ||
-            hasPendingCurrentVersionAgentDatabaseMigration(database),
+          migrationPending,
         )
       ) {
         assertSqliteIntegrity(database, input.pathname);
