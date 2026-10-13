@@ -8,6 +8,7 @@ const MAX_WRITERS_PER_TURN = 4;
 const WRITER_TURN_BUDGET_MS = 4;
 
 type StoreWriterTask = {
+  label: string;
   keys?: ReadonlySet<string>;
   fn: () => Promise<unknown>;
   resolve: (value: unknown) => void;
@@ -19,13 +20,23 @@ export type StoreWriterQueue = {
   pending: StoreWriterTask[];
   drainPromise: Promise<void> | null;
   wake?: () => void;
+  activeUnkeyed?: { label: string; startedAt: number };
+  completedUnkeyed: Map<string, { count: number; ms: number }>;
 };
 
 /** Store writer queues keyed by the canonical store path. */
 type StoreWriterQueues = Map<string, StoreWriterQueue>;
 
 /** Request-owned monotonic timestamps; queued work may be rejected without entering. */
-export type StoreWriterTiming = { startedAt?: number; finishedAt?: number; reentrant?: boolean };
+export type StoreWriterTiming = {
+  startedAt?: number;
+  finishedAt?: number;
+  reentrant?: boolean;
+  queuedMs?: number;
+  queueDepthAtEnqueue?: number;
+  queueOccupiedMs?: number;
+  queueBlockers?: Array<{ operation: string; count: number; ms: number }>;
+};
 
 type ActiveStoreWriter = {
   active: boolean;
@@ -136,7 +147,11 @@ function getOrCreateStoreWriterQueue(
   if (existing) {
     return existing;
   }
-  const created: StoreWriterQueue = { pending: [], drainPromise: null };
+  const created: StoreWriterQueue = {
+    pending: [],
+    drainPromise: null,
+    completedUnkeyed: new Map(),
+  };
   queues.set(storePath, created);
   return created;
 }
@@ -193,7 +208,18 @@ async function drainStoreWriterQueue(queues: StoreWriterQueues, storePath: strin
       }
       queue.pending.splice(index, 1);
       if (!task.keys) {
-        await task.fn().then(task.resolve, task.reject);
+        const startedAt = performance.now();
+        queue.activeUnkeyed = { label: task.label, startedAt };
+        try {
+          await task.fn().then(task.resolve, task.reject);
+        } finally {
+          const elapsed = Math.max(0, performance.now() - startedAt);
+          const completed = queue.completedUnkeyed.get(task.label) ?? { count: 0, ms: 0 };
+          completed.count++;
+          completed.ms += elapsed;
+          queue.completedUnkeyed.set(task.label, completed);
+          queue.activeUnkeyed = undefined;
+        }
         continue;
       }
       const keys = task.keys;
@@ -269,6 +295,15 @@ export async function runQueuedStoreWrite<T>(params: {
   // async context. The active-writer scope still belongs to actual execution.
   const runInAsyncContext = AsyncLocalStorage.snapshot();
   const queue = getOrCreateStoreWriterQueue(params.queues, params.storePath);
+  const queuedAt = params.timing && !keys ? performance.now() : undefined;
+  const completedAtEnqueue =
+    queuedAt === undefined
+      ? undefined
+      : new Map([...queue.completedUnkeyed].map(([label, value]) => [label, { ...value }]));
+  const activeAtEnqueue = queuedAt === undefined ? undefined : queue.activeUnkeyed;
+  if (queuedAt !== undefined && params.timing) {
+    params.timing.queueDepthAtEnqueue = queue.pending.length + (activeAtEnqueue ? 1 : 0);
+  }
   let detach = () => {};
   const completion = new Promise<T>((resolve, reject) => {
     detach = () => params.signal?.removeEventListener("abort", abort);
@@ -281,9 +316,26 @@ export async function runQueuedStoreWrite<T>(params: {
       }
     };
     const task: StoreWriterTask = {
+      label: params.label,
       keys,
       fn: async () => {
         detach();
+        if (queuedAt !== undefined && params.timing) {
+          const admittedAt = performance.now();
+          params.timing.queuedMs = Math.max(0, admittedAt - queuedAt);
+          const blockers = [...queue.completedUnkeyed].flatMap(([operation, completed]) => {
+            const before = completedAtEnqueue?.get(operation);
+            const count = completed.count - (before?.count ?? 0);
+            const preEnqueueMs =
+              activeAtEnqueue?.label === operation
+                ? Math.max(0, queuedAt - activeAtEnqueue.startedAt)
+                : 0;
+            const ms = Math.max(0, completed.ms - (before?.ms ?? 0) - preEnqueueMs);
+            return count > 0 ? [{ operation, count, ms }] : [];
+          });
+          params.timing.queueOccupiedMs = blockers.reduce((sum, blocker) => sum + blocker.ms, 0);
+          params.timing.queueBlockers = blockers.toSorted((a, b) => b.ms - a.ms).slice(0, 3);
+        }
         return await runInAsyncContext(
           runActiveStoreWriter,
           params.queues,

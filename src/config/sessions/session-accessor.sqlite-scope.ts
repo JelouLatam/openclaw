@@ -210,6 +210,7 @@ export async function runExclusiveSqliteSessionWrite<T>(
     threadId,
     isMainThread,
     operation,
+    ...(diagnostics?.phase ? { phase: diagnostics.phase } : {}),
     ...(diagnostics?.kind ? { reclamationKind: diagnostics.kind } : {}),
     ...(diagnostics?.workerThreadId !== undefined
       ? { workerThreadId: diagnostics.workerThreadId }
@@ -218,6 +219,20 @@ export async function runExclusiveSqliteSessionWrite<T>(
       ? { artifactPreparation: artifactPreparationLogFields(diagnostics.artifactPreparation) }
       : {}),
     elapsedMs: Math.round(completedAt - startedAt),
+    ...(timing.queuedMs !== undefined
+      ? {
+          queuedMs: Math.round(timing.queuedMs),
+          queueDepthAtEnqueue: timing.queueDepthAtEnqueue,
+          queueOccupiedMs: Math.round(timing.queueOccupiedMs ?? 0),
+          queueUnattributedMs: Math.round(
+            Math.max(0, timing.queuedMs - (timing.queueOccupiedMs ?? 0)),
+          ),
+          queueBlockers: timing.queueBlockers?.map((blocker) => ({
+            ...blocker,
+            ms: Math.round(blocker.ms),
+          })),
+        }
+      : {}),
     ...(timing.startedAt !== undefined && timing.finishedAt !== undefined
       ? {
           queueWaitMs: Math.round(timing.startedAt - startedAt),
@@ -244,8 +259,21 @@ export async function runExclusiveSqliteSessionWrite<T>(
       { operation, ownerKind: isMainThread ? "main" : "worker", actorId: threadId },
       () =>
         writer === "worker"
-          ? runOpenClawAgentWorkerWrite(databaseOptions, fn, timing, signal)
-          : runOpenClawAgentWriteAdmission(databaseOptions, fn, false, timing, signal),
+          ? runOpenClawAgentWorkerWrite(
+              databaseOptions,
+              fn,
+              timing,
+              signal,
+              diagnostics?.phase ? `${operation}.${diagnostics.phase}` : operation,
+            )
+          : runOpenClawAgentWriteAdmission(
+              databaseOptions,
+              fn,
+              false,
+              timing,
+              signal,
+              diagnostics?.phase ? `${operation}.${diagnostics.phase}` : operation,
+            ),
     );
   try {
     const result = await owned();

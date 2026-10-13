@@ -54,11 +54,68 @@ it("marks idle and reentrant execution without deferring either callback", async
     expect(outerTiming.startedAt).toBe(0);
     expect(await pending).toBe("result");
     expect(innerTiming).toEqual({ startedAt: 5, finishedAt: 10, reentrant: true });
-    expect(outerTiming).toEqual({ startedAt: 0, finishedAt: 15, reentrant: false });
+    expect(outerTiming).toEqual({
+      startedAt: 0,
+      finishedAt: 15,
+      reentrant: false,
+      queuedMs: 0,
+      queueDepthAtEnqueue: 0,
+      queueOccupiedMs: 0,
+      queueBlockers: [],
+    });
     expect(queues.size).toBe(0);
   } finally {
     await pending.catch(() => {});
     clockSpy.mockRestore();
+  }
+});
+
+it("attributes a queued wait to all earlier unkeyed writers, including fast ones", async () => {
+  const queues = new Map<string, StoreWriterQueue>();
+  const release = createDeferred();
+  const timing: StoreWriterTiming = {};
+  let now = 0;
+  const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+  const first = runQueuedStoreWrite({
+    queues,
+    storePath: "attributed-store",
+    label: "prepare",
+    fn: async () => {
+      await release.promise;
+      now = 100;
+    },
+  });
+  now = 20;
+  const fast = runQueuedStoreWrite({
+    queues,
+    storePath: "attributed-store",
+    label: "commit",
+    fn: async () => {
+      now = 105;
+    },
+  });
+  now = 30;
+  const observed = runQueuedStoreWrite({
+    queues,
+    storePath: "attributed-store",
+    label: "observer",
+    timing,
+    fn: async () => "done",
+  });
+  try {
+    expect(timing.queueDepthAtEnqueue).toBe(2);
+    release.resolve();
+    expect(await observed).toBe("done");
+    expect(timing.queuedMs).toBe(75);
+    expect(timing.queueOccupiedMs).toBe(75);
+    expect(timing.queueBlockers).toEqual([
+      { operation: "prepare", count: 1, ms: 70 },
+      { operation: "commit", count: 1, ms: 5 },
+    ]);
+  } finally {
+    release.resolve();
+    await Promise.allSettled([first, fast, observed]);
+    clock.mockRestore();
   }
 });
 

@@ -105,6 +105,7 @@ export type SqliteSessionArchivePruningDiagnostics = {
 };
 
 export type SqliteSessionWriteDiagnostics = SqliteSessionReclamationDiagnostics & {
+  phase?: "prepare" | "commit";
   artifactPreparation?: SqliteSessionArtifactPreparationDiagnostics;
   reclamationAdmission?: SqliteSessionReclamationAdmissionDiagnostics;
 };
