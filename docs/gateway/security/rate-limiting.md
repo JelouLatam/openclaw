@@ -1,8 +1,8 @@
 ---
-summary: "Reference for every Gateway rate limit: pre-auth socket budgets and lockouts, browser and webhook throttles, the control-plane write backstop, ACP session caps, and restart cooldown"
+summary: "Reference for every Gateway rate limit: pre-auth socket budgets and lockouts, browser and webhook throttles, the control-plane write and per-connection read backstops, ACP session caps, and restart cooldown"
 read_when:
   - A client sees `rate limit exceeded for <method>`, `AUTH_RATE_LIMITED`, or lockout errors
-  - You want to tune `gateway.auth.rateLimit`
+  - You want to tune `gateway.auth.rateLimit` or the per-connection read budget
   - You are reasoning about brute-force protection on an exposed Gateway
   - You need to know which Gateway surfaces are throttled, at what limits
 title: "Rate limiting"
@@ -21,6 +21,7 @@ At a glance:
 | Browser-origin WS auth failures      | same, loopback **not** exempt    | IP, or page origin from loopback | `gateway.auth.rateLimit`                  |
 | Webhook (`/hooks`) auth failures     | 20 failures / 60s, 60s lockout   | IP                               | no                                        |
 | Control-plane write RPCs             | 30 requests / 60s per method     | method + device + IP (see below) | no                                        |
+| Read RPCs (post-auth)                | 600 burst, 10/s per method       | WebSocket connection + method    | `gateway.readRateLimit`                   |
 | ACP session creation                 | 120 sessions / 10s               | translator instance              | internal                                  |
 | Gateway restart cycles               | 30s cooldown between restarts    | process                          | no                                        |
 
@@ -220,6 +221,58 @@ When exceeded, the request fails with a retryable error:
 Clients should honor `retryAfterMs`. The limit is fixed (not configurable);
 buckets expire on their own and are pruned by Gateway maintenance.
 
+## Read RPCs (per-connection backstop)
+
+Every `operator.read` and `operator.sessions.read` RPC on an operator WebSocket
+connection (`agent.identity.get`, `sessions.list`, `chat.history`, ...) draws
+from a token bucket owned by that connection, one bucket per method. A bucket
+holds **600** requests and refills at **10 per second**. The check runs before
+the request enters the Gateway's shared request start queue, so a client stuck
+in a refetch loop is refused without delaying other connections.
+
+Interactive use stays far below it: a Control UI tab makes a few identity reads
+per minute and bursts about one per agent when it loads a roster. The budget is
+for a client loop that sustains hundreds of reads per second, where every
+other connection otherwise waits behind it.
+
+A refused read fails with the control-plane error shape:
+
+```json
+{
+  "code": "UNAVAILABLE",
+  "message": "rate limit exceeded for agent.identity.get; retry after 1s",
+  "retryable": true,
+  "retryAfterMs": 100,
+  "details": { "method": "agent.identity.get", "limit": "600 burst, 10/s" }
+}
+```
+
+If one connection collects more than **3000** refusals within 60 seconds, the
+Gateway closes it with code `1008` (`read rate limit exceeded`) and logs
+`read rate-limited ... closing`. The first refusal and every thousandth after it
+are logged as `read rate-limited method=<method> connId=<id>`. Node connections
+and admin or write methods are not counted here.
+
+Tune it under `gateway.readRateLimit` in `openclaw.json`. Changes apply to
+the next request without a restart:
+
+```json
+{
+  "gateway": {
+    "readRateLimit": {
+      "burst": 600,
+      "perSecond": 10,
+      "closeAfter": 3000
+    }
+  }
+}
+```
+
+`burst` is the bucket size per method (`0` disables the limit), `perSecond` the
+sustained refill rate, and `closeAfter` the refusals within 60 seconds that
+close the socket (`0` never closes). Invalid values fall back to the defaults.
+Buckets live with the connection and disappear when it closes.
+
 ## ACP session creation
 
 The ACP translator caps session creation at 120 new sessions per 10 second
@@ -246,7 +299,8 @@ the resulting restart obeys the cooldown.
 
 - All limiters are in-memory and per-process, and multiple Gateways do not
   share state. Replacing the Gateway process clears the Gateway-owned
-  counters (auth lockouts, webhook throttle, control-plane buckets). The
+  counters (auth lockouts, webhook throttle, control-plane buckets, and
+  per-connection read buckets). The
   restart cooldown deliberately survives in-process restart cycles — that is
   what it throttles — and resets only with the process. The ACP session cap
   belongs to its translator instance and resets when that instance is

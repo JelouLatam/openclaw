@@ -370,6 +370,17 @@ export const GatewayConfigSchema = z
      * Default: false (safer fail-closed behavior).
      */
     allowRealIpFallback: z.boolean().optional(),
+    /** Per-connection budget for operator read RPCs. */
+    readRateLimit: z
+      .strictObject({
+        /** Requests a method may burst per connection; 0 disables the limit.  @default 600 */
+        burst: z.number().int().min(0).optional(),
+        /** Sustained refill rate per method per connection.  @default 10 */
+        perSecond: z.number().positive().optional(),
+        /** Refusals within 60s that close the connection; 0 never closes.  @default 3000 */
+        closeAfter: z.number().int().min(0).optional(),
+      })
+      .optional(),
     /** Tool access restrictions for HTTP /tools/invoke endpoint. */
     tools: z
       .strictObject({
