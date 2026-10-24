@@ -18,6 +18,7 @@ describe("Gateway operation policy reload", () => {
     "gateway.auth.rateLimit.windowMs",
     "gateway.auth.rateLimit.lockoutMs",
     "gateway.auth.rateLimit.exemptLoopback",
+    "gateway.readRateLimit.burst",
     "gateway.roles.definitions.operator.scopes",
     "gateway.trustedProxies",
     "gateway.allowRealIpFallback",

@@ -163,3 +163,53 @@ it.each(["sidebar", "chat"])(
     expect(request).toHaveBeenCalledTimes(2);
   },
 );
+
+it("keeps a roster larger than the shared request cache from refetching on every publish", async () => {
+  const request = vi.fn(async (_method: string, params: unknown) => {
+    const { agentId } = params as { agentId: string };
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    return { agentId, name: agentId, avatar: "" };
+  });
+  const client = createTestGatewayClient(request);
+  const capability = createAgentIdentityCapability({
+    snapshot: { client, phase: "connected" },
+    subscribe: () => () => undefined,
+  });
+  const roster = Array.from({ length: 141 }, (_, index) => `agent-${index}`);
+  // A surface that renders the whole roster calls ensure from every identity publication.
+  capability.subscribe(() => void capability.ensure(roster));
+
+  await capability.ensure(roster);
+  for (let tick = 0; tick < 20; tick += 1) {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  }
+
+  expect(request).toHaveBeenCalledTimes(roster.length);
+  expect(capability.entries()).toHaveLength(roster.length);
+});
+
+it("waits before retrying an identity read that failed", async () => {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(0);
+  const request = vi.fn(async () => {
+    throw new Error("rate limit exceeded for agent.identity.get");
+  });
+  const client = createTestGatewayClient(request);
+  const capability = createAgentIdentityCapability({
+    snapshot: { client, phase: "connected" },
+    subscribe: () => () => undefined,
+  });
+
+  await capability.ensure(["main"]);
+  await capability.ensure(["main"]);
+  clock.mockReturnValue(4_999);
+  await capability.ensure(["main"]);
+  expect(request).toHaveBeenCalledOnce();
+
+  clock.mockReturnValue(5_000);
+  await capability.ensure(["main"]);
+  expect(request).toHaveBeenCalledTimes(2);
+});

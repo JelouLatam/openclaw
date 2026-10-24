@@ -22,6 +22,8 @@ type AgentIdentityCacheEntry = {
 const AGENT_IDENTITY_CACHE_LIMIT = 128;
 // Workspace avatars can change in place without a config or roster event.
 const AGENT_IDENTITY_CACHE_TTL_MS = 60_000;
+// A failed read publishes nothing, so without a floor every render retries it.
+const AGENT_IDENTITY_RETRY_FLOOR_MS = 5_000;
 const identityRequests = new WeakMap<GatewayBrowserClient, Map<string, AgentIdentityCacheEntry>>();
 
 /** Retire every UI surface's cached request when its connection or roster revision changes. */
@@ -108,6 +110,8 @@ export function createAgentIdentityCapability(
   let cachedConnected = gateway.snapshot.phase === "connected";
   let connectionGeneration = 0;
   const identities = new Map<string, AgentIdentityResult>();
+  const publishedAt = new Map<string, number>();
+  const retryAt = new Map<string, number>();
   const invalidationEpochs = new Map<string, number>();
   const listeners = new Set<() => void>();
 
@@ -128,6 +132,8 @@ export function createAgentIdentityCapability(
     cachedConnected = connected;
     connectionGeneration += 1;
     identities.clear();
+    publishedAt.clear();
+    retryAt.clear();
     invalidationEpochs.clear();
     if (hadIdentities) {
       publish();
@@ -143,6 +149,8 @@ export function createAgentIdentityCapability(
     invalidateAgentIdentityCache(cachedClient);
     connectionGeneration += 1;
     identities.clear();
+    publishedAt.clear();
+    retryAt.clear();
     invalidationEpochs.clear();
     publish();
   });
@@ -163,12 +171,22 @@ export function createAgentIdentityCapability(
         return;
       }
       const generation = connectionGeneration;
+      const now = Date.now();
       const missing = normalizeUniqueTrimmedStringList(agentIds).filter((agentId) => {
+        if ((retryAt.get(agentId) ?? 0) > now) {
+          return false;
+        }
         const cached = identityRequests.get(client)?.get(agentId);
-        return (
-          !hasFreshAgentIdentityResult(cached) ||
-          identities.get(agentId) !== cached?.result?.identity
-        );
+        if (cached) {
+          return (
+            !hasFreshAgentIdentityResult(cached) ||
+            identities.get(agentId) !== cached.result?.identity
+          );
+        }
+        // The shared cache evicts beyond its limit; a roster larger than it
+        // would otherwise refetch the evicted ids on every publication.
+        const at = publishedAt.get(agentId);
+        return at === undefined || now - at >= AGENT_IDENTITY_CACHE_TTL_MS;
       });
       if (missing.length === 0) {
         return;
@@ -192,6 +210,13 @@ export function createAgentIdentityCapability(
       }
       let changed = false;
       for (const [agentId, invalidationEpoch, identity] of results) {
+        if (!identity) {
+          if (invalidationEpoch === (invalidationEpochs.get(agentId) ?? 0)) {
+            retryAt.set(agentId, Date.now() + AGENT_IDENTITY_RETRY_FLOOR_MS);
+          }
+          continue;
+        }
+        retryAt.delete(agentId);
         // Overlapping ensure calls share the request, so only its first
         // publication changes the snapshot observed by subscribers.
         if (
@@ -200,6 +225,7 @@ export function createAgentIdentityCapability(
           invalidationEpoch === (invalidationEpochs.get(agentId) ?? 0)
         ) {
           identities.set(agentId, identity);
+          publishedAt.set(agentId, Date.now());
           changed = true;
         }
       }
@@ -213,6 +239,8 @@ export function createAgentIdentityCapability(
       invalidateAgentIdentityCache(cachedClient, ids);
       for (const agentId of ids) {
         invalidationEpochs.set(agentId, (invalidationEpochs.get(agentId) ?? 0) + 1);
+        publishedAt.delete(agentId);
+        retryAt.delete(agentId);
         if (identities.delete(agentId)) {
           changed = true;
         }

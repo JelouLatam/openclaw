@@ -178,6 +178,14 @@ export const CORE_FIELD_HELP: Record<string, string> = {
     "Optional exact plugin ID whose Gateway access policy must authorize this role. Access is denied when the plugin is missing, disabled, fails to load, or supplies no current authority. Unavailable plugin IDs remain valid configuration so independent staff roles and the Gateway owner can repair access. Omitting this field adds no plugin dependency.",
   "gateway.trustedProxies":
     "CIDR/IP allowlist of upstream proxies permitted to provide forwarded client identity headers. Keep this list narrow so untrusted hops cannot impersonate users.",
+  "gateway.readRateLimit":
+    "Per-connection token bucket for operator read RPCs such as agent.identity.get and sessions.list, one bucket per method. It bounds a client stuck in a refetch loop without affecting normal tabs; set burst to 0 to disable it.",
+  "gateway.readRateLimit.burst":
+    "Requests one connection may burst on one read method before refusals start (default 600). A Control UI roster load bursts about one identity read per agent; 0 disables the limit.",
+  "gateway.readRateLimit.perSecond":
+    "Sustained read rate per method per connection once the burst is spent (default 10).",
+  "gateway.readRateLimit.closeAfter":
+    "Refused reads within 60 seconds after which the Gateway closes the connection with code 1008 (default 3000). 0 keeps refusing without closing.",
   "gateway.allowRealIpFallback":
     "Enables x-real-ip fallback when x-forwarded-for is missing in proxy scenarios. Keep disabled unless your ingress stack requires this compatibility behavior.",
   "gateway.tools":

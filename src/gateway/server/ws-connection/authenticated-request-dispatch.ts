@@ -31,6 +31,7 @@ import {
   hasCurrentGatewayOperatorAccess,
 } from "../../operator-access-policy.js";
 import { onOperatorRolePolicyChanged } from "../../operator-role-policy.js";
+import { READ_SCOPE, SESSION_READ_SCOPE } from "../../operator-scopes.js";
 import { bindWebSocketRequestMutationAuthority } from "../../server-methods/session-mutation-guards.js";
 import type { GatewayRequestEntry } from "../../server-request-entry.js";
 import { SharedGatewaySessionGenerationState } from "../../server-shared-auth-generation.js";
@@ -44,6 +45,11 @@ import {
 } from "../ws-policy-close.js";
 import type { GatewayWsClient } from "../ws-types.js";
 import type { GatewayWsMessageHandlerParams } from "./message-handler-types.js";
+import {
+  ConnectionReadRateLimiter,
+  formatReadRateLimit,
+  resolveReadRateLimitOptions,
+} from "./read-rate-limit.js";
 import { createGatewayRpcDiagnostics } from "./request-diagnostics.js";
 import { scheduleGatewayRequestStart } from "./request-start.js";
 import { isUnauthorizedRoleError, UnauthorizedFloodGuard } from "./unauthorized-flood-guard.js";
@@ -77,6 +83,7 @@ export function createGatewayAuthenticatedRequestDispatcher(params: {
     logGateway,
   } = params.handler;
   const unauthorizedFloodGuard = new UnauthorizedFloodGuard();
+  const readRateLimiter = new ConnectionReadRateLimiter();
   let deviceCredentialMutationBarrier: Promise<void> | undefined;
 
   const closeInvalidatedClient = (client: GatewayWsClient, method: string): boolean => {
@@ -98,6 +105,55 @@ export function createGatewayAuthenticatedRequestDispatcher(params: {
       // The mutation owner already decided whether this was a committed revocation.
       revokeSource: false,
     });
+    return true;
+  };
+
+  // Rejects before the request start queue, so a runaway read loop on one
+  // socket cannot occupy the slots every other connection shares.
+  const rejectRateLimitedRead = (
+    req: { id: string; method: string },
+    client: GatewayWsClient,
+    admission: "continuation" | undefined,
+    context: ReturnType<typeof buildRequestContext>,
+  ): boolean => {
+    if (admission === "continuation" || client.connect.role !== "operator") {
+      return false;
+    }
+    const scope = getMethodRegistry?.()?.getScope(req.method);
+    if (scope !== READ_SCOPE && scope !== SESSION_READ_SCOPE) {
+      return false;
+    }
+    const options = resolveReadRateLimitOptions(
+      context.getRuntimeConfig?.()?.gateway?.readRateLimit,
+    );
+    const decision = readRateLimiter.consume(req.method, options);
+    if (decision.allowed) {
+      return false;
+    }
+    const limit = formatReadRateLimit(options);
+    send({
+      type: "res",
+      id: req.id,
+      ok: false,
+      error: errorShape(
+        ErrorCodes.UNAVAILABLE,
+        `rate limit exceeded for ${req.method}; retry after ${Math.ceil(decision.retryAfterMs / 1000)}s`,
+        {
+          retryable: true,
+          retryAfterMs: decision.retryAfterMs,
+          details: { method: req.method, limit },
+        },
+      ),
+    });
+    if (decision.rejections === 1 || decision.rejections % 1000 === 0 || decision.shouldClose) {
+      logGateway.warn(
+        `read rate-limited method=${req.method} connId=${connId} rejections=${decision.rejections} limit="${limit}"${decision.shouldClose ? " closing" : ""}`,
+      );
+    }
+    if (decision.shouldClose) {
+      setCloseCause("read-rate-limit", { method: req.method, rejections: decision.rejections });
+      queueMicrotask(() => close(1008, "read rate limit exceeded"));
+    }
     return true;
   };
 
@@ -125,9 +181,12 @@ export function createGatewayAuthenticatedRequestDispatcher(params: {
     if (closeInvalidatedClient(client, req.method)) {
       return;
     }
+    const context = buildRequestContext();
+    if (rejectRateLimitedRead(req, client, admission, context)) {
+      return;
+    }
     const diagnostics = createGatewayRpcDiagnostics(req.method, getMethodRegistry, extraHandlers);
     logWs("in", "req", { connId, id: req.id, method: req.method });
-    const context = buildRequestContext();
     const generationState = SharedGatewaySessionGenerationState.fromReader(
       getRequiredSharedGatewaySessionGeneration,
     );

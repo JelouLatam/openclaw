@@ -180,6 +180,7 @@ const CORE_RELOAD_POLICIES: ReloadPolicy[] = [
       "gateway.push.apns.relay",
       "gateway.terminal",
       "gateway.auth.rateLimit",
+      "gateway.readRateLimit",
       "gateway.roles",
       "gateway.trustedProxies",
       "gateway.allowRealIpFallback",
