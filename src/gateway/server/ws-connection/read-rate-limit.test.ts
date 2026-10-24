@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  ConnectionReadRateLimiter,
-  DEFAULT_READ_RATE_BURST,
-  DEFAULT_READ_RATE_CLOSE_AFTER,
-  DEFAULT_READ_RATE_PER_SECOND,
-  READ_RATE_CLOSE_WINDOW_MS,
-  resolveReadRateLimitOptions,
-} from "./read-rate-limit.js";
+import { ConnectionReadRateLimiter, resolveReadRateLimitOptions } from "./read-rate-limit.js";
+
+const READ_RATE_CLOSE_WINDOW_MS = 60_000;
 
 describe("ConnectionReadRateLimiter", () => {
   it("admits a roster-sized burst and refills at the sustained rate", () => {
@@ -65,15 +60,10 @@ describe("ConnectionReadRateLimiter", () => {
 });
 
 describe("resolveReadRateLimitOptions", () => {
-  const defaults = {
-    burst: DEFAULT_READ_RATE_BURST,
-    perSecond: DEFAULT_READ_RATE_PER_SECOND,
-    closeAfter: DEFAULT_READ_RATE_CLOSE_AFTER,
-  };
+  const defaults = { burst: 600, perSecond: 10, closeAfter: 3_000 };
 
   it("uses defaults far above interactive use", () => {
     expect(resolveReadRateLimitOptions(undefined)).toEqual(defaults);
-    expect(defaults).toEqual({ burst: 600, perSecond: 10, closeAfter: 3_000 });
   });
 
   it("reads overrides, accepts zero to disable, and ignores invalid values", () => {

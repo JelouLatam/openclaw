@@ -1,8 +1,8 @@
 // Per-connection read budget bounds a runaway client loop on operator.read RPCs.
-export const DEFAULT_READ_RATE_BURST = 600;
-export const DEFAULT_READ_RATE_PER_SECOND = 10;
-export const DEFAULT_READ_RATE_CLOSE_AFTER = 3_000;
-export const READ_RATE_CLOSE_WINDOW_MS = 60_000;
+const DEFAULT_READ_RATE_BURST = 600;
+const DEFAULT_READ_RATE_PER_SECOND = 10;
+const DEFAULT_READ_RATE_CLOSE_AFTER = 3_000;
+const READ_RATE_CLOSE_WINDOW_MS = 60_000;
 
 export type ReadRateLimitOptions = {
   /** Bucket capacity per method; 0 disables the limiter. */
