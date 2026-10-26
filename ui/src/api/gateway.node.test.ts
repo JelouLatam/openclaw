@@ -64,6 +64,7 @@ type DeviceIdentity = { deviceId: string; privateKey: string; publicKey: string 
 const CONTROL_UI_OPERATOR_SCOPES = [
   "operator.admin",
   "operator.read",
+  "operator.sessions.write",
   "operator.write",
   "operator.approvals",
   "operator.questions",
@@ -510,6 +511,7 @@ describe("GatewayBrowserClient", () => {
       GATEWAY_CLIENT_CAPS.USAGE_REFRESHING,
     ]);
     expect(connectFrame.params?.scopes).toEqual([...CONTROL_UI_OPERATOR_SCOPES]);
+    expect(connectFrame.params?.scopes).toContain("operator.sessions.write");
   });
 
   it.each([
