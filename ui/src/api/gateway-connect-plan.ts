@@ -49,6 +49,7 @@ export const CONTROL_UI_OPERATOR_ROLE = "operator";
 export const CONTROL_UI_OPERATOR_SCOPES = [
   "operator.admin",
   "operator.read",
+  "operator.sessions.write",
   "operator.write",
   "operator.approvals",
   "operator.questions",

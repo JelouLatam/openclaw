@@ -2,6 +2,8 @@ import { isPassThroughRemoteMediaSource } from "@openclaw/media-core/media-sourc
 import { isAudioFileName } from "@openclaw/media-core/mime";
 import { isCloudWorkerPlacementState } from "../../../packages/gateway-protocol/src/schema/session-placement-state.js";
 import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
+import { createSandboxBridgeReadFile } from "../../agents/sandbox-media-paths.js";
+import { resolveSandboxConfigForAgent, resolveSandboxContext } from "../../agents/sandbox.js";
 import { resolveSessionPermissionCoreToolPolicy } from "../../agents/session-permission-exec-mode.js";
 import { resolveEffectiveToolFsWorkspaceOnly } from "../../agents/tool-fs-policy.js";
 import {
@@ -306,6 +308,38 @@ export async function normalizeWebchatReplyMediaPathsForDisplay(
       await import("../../auto-reply/reply/reply-media-paths.runtime.js");
     assertCurrent?.();
     const workspaceOnly = resolveWebchatReplyWorkspaceOnly(params);
+    // A sandbox on another host owns its output files. Stage them through its
+    // bounded filesystem bridge instead of opening the same path on the Gateway.
+    const sandbox =
+      !remote && resolveSandboxConfigForAgent(params.cfg, params.agentId).backend === "ssh"
+        ? await resolveSandboxContext({
+            config: params.cfg,
+            agentId: params.agentId,
+            sessionKey: params.sessionKey,
+            workspaceDir,
+            assertCurrent,
+          })
+        : null;
+    assertCurrent?.();
+    const remoteReadFile =
+      sandbox?.backendId === "ssh" && sandbox.fsBridge && sandbox.workspaceAccess !== "none"
+        ? createSandboxBridgeReadFile({
+            sandbox: { root: sandbox.workspaceDir, bridge: sandbox.fsBridge },
+          })
+        : undefined;
+    const workspaceMediaAccess =
+      sandbox && remoteReadFile
+        ? {
+            localRoots: [sandbox.workspaceDir],
+            workspaceDir: sandbox.workspaceDir,
+            readFile: async (...args: Parameters<typeof remoteReadFile>) => {
+              assertCurrent?.();
+              const bytes = await remoteReadFile(...args);
+              assertCurrent?.();
+              return bytes;
+            },
+          }
+        : undefined;
     const normalizeMediaPaths = createReplyMediaPathNormalizer({
       cfg: params.cfg,
       sessionKey: params.sessionKey,
@@ -314,6 +348,7 @@ export async function normalizeWebchatReplyMediaPathsForDisplay(
       sessionWorkspaceDir: workspaceOnly && !remote ? workspaceDir : undefined,
       workspaceOnly,
       allowHostWorkspace: !remote,
+      workspaceMediaAccess,
       accountId: params.accountId,
       ...resolveRequesterPolicyContext(params.requesterContext),
     });
