@@ -64,3 +64,31 @@ Defaults: `command: "ssh"`, `workspaceRoot: "/tmp/openclaw-sandboxes"`, `strictH
 - **Skill generations**: each prepared sandbox context captures its selected skills and supporting scripts/assets together. The SSH backend publishes that immutable generation once and uses its exact paths in prompts and file tools. Concurrent commands share a completed generation without clearing or transferring it again; a later context sees updated resources without deleting files used by an earlier command. Remote generations remain under the runtime root and are removed with it. Local snapshots remain with the Gateway's materialized skill workspace, separate from the agent's editable project.
 - **Authentication material**: `identityFile`/`certificateFile`/`knownHostsFile` reference existing local files. `identityData`/`certificateData`/`knownHostsData` accept inline strings or SecretRefs, resolved through the normal secrets runtime snapshot, written to temp files with mode `0600`, and deleted when the SSH session ends. If both a `*File` and `*Data` variant are set for the same item, `*Data` wins for that session.
 - **Remote-canonical consequences**: the remote SSH workspace becomes the real sandbox state after the initial seed. Host-local edits made outside OpenClaw after the seed step are not visible remotely until you recreate the sandbox. `openclaw sandbox recreate` deletes the per-scope remote root and seeds again from local on next use. Browser sandboxing is not supported on this backend, and `sandbox.docker.*` settings do not apply to it.
+
+## Remote skill materialization
+
+This section describes internal backend implementation contracts, not a typed
+public plugin SDK entrypoint. Downstream forks using the internal remote-shell
+helper must migrate their backend registration with the helper.
+
+The bundled SSH and Crabbox backend implementations can declare
+`capabilities.requiresSkillsSnapshot: true`. Before calling their factory, core
+prepares `CreateSandboxBackendParams.skillsMaterialization` with the exact
+`workspaceDir` and opaque `revision` selected by the skill synchronization
+transaction. The revision includes supporting resource changes as well as skill
+instructions. Keep that prepared fact; do not reread the mutable materialization
+to select a later revision.
+
+`createRemoteShellSandboxBackend` consumes this fact when a writable sandbox
+supplies `skillsWorkspaceDir`. It publishes the snapshot to a distinct remote
+generation and exposes `skillsWorkspace: { hostPath, containerPath }` on its
+handle. Core uses that projection for prompt paths and the filesystem bridge.
+SSH and Crabbox use this capability; backends that do not request it retain their
+existing skill synchronization behavior. Preprovisioned worktrees continue to
+use their placement-owned files.
+
+Custom backends that call `createRemoteShellSandboxBackend` for writable
+sandboxes with `skillsWorkspaceDir` must add `requiresSkillsSnapshot: true` to
+their registration. Without it, the helper rejects construction before remote
+operations because it cannot bind selected instructions to their exact bytes.
+Do not fabricate a snapshot from the mutable workspace after synchronization.
