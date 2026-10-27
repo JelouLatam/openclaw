@@ -273,6 +273,7 @@ builtinSandboxBackends.set("podman", {
   capabilities: { readOnlyResourceMounts: true },
 });
 builtinSandboxBackends.set("ssh", {
+  capabilities: { requiresSkillsSnapshot: true },
   factory: createSshSandboxBackend,
   manager: sshSandboxBackendManager,
   resolveWorkdir: ({ cfg, scopeKey }) =>

@@ -22,6 +22,7 @@ type SandboxSkillRuntimeContext = Pick<SandboxContext, "enabled"> &
       SandboxContext,
       | "skillsEligibility"
       | "skillsWorkspaceDir"
+      | "skillsContainerWorkdir"
       | "containerWorkdir"
       | "workspaceAccess"
       | "skillUsagePaths"
@@ -137,14 +138,15 @@ export function resolveSandboxSkillRuntimeInputs(params: {
   if (params.sandbox?.enabled === true) {
     const skillsWorkspaceDir = params.sandbox.skillsWorkspaceDir ?? params.skillsAnchorWorkspace;
     const skillsPromptWorkspaceDir =
-      params.sandbox.workspaceAccess === "rw" &&
+      params.sandbox.skillsContainerWorkdir ??
+      (params.sandbox.workspaceAccess === "rw" &&
       params.sandbox.skillsWorkspaceDir &&
       params.sandbox.containerWorkdir
         ? containerJoin(
             params.sandbox.containerWorkdir,
             ...MATERIALIZED_SKILLS_WORKSPACE_CONTAINER_PARTS,
           )
-        : (params.sandbox.containerWorkdir ?? skillsWorkspaceDir);
+        : (params.sandbox.containerWorkdir ?? skillsWorkspaceDir));
     const skillUsagePaths = mapSandboxSkillUsagePaths({
       paths: params.sandbox.skillUsagePaths,
       skillsWorkspaceDir,

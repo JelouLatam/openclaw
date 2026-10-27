@@ -92,3 +92,27 @@ as the preview limit, including when the file grew after stat.
 Session file requests retain their existing live read authorization before each
 workspace operation and before returning a response. Revocation stops subsequent
 workspace operations; it cannot retract an operation already dispatched.
+
+## Remote skill materialization
+
+Backends registered through `openclaw/plugin-sdk/sandbox` can declare
+`capabilities.requiresSkillsSnapshot: true`. Before calling their factory, core
+prepares `CreateSandboxBackendParams.skillsMaterialization` with the exact
+`workspaceDir` and opaque `revision` selected by the skill synchronization
+transaction. The revision includes supporting resource changes as well as skill
+instructions. Keep that prepared fact; do not reread the mutable materialization
+to select a later revision.
+
+`createRemoteShellSandboxBackend` consumes this fact when a writable sandbox
+supplies `skillsWorkspaceDir`. It publishes the snapshot to a distinct remote
+generation and exposes `skillsWorkspace: { hostPath, containerPath }` on its
+handle. Core uses that projection for prompt paths and the filesystem bridge.
+SSH and Crabbox use this capability; backends that do not request it retain their
+existing skill synchronization behavior. Preprovisioned worktrees continue to
+use their placement-owned files.
+
+Custom backends that call `createRemoteShellSandboxBackend` for writable
+sandboxes with `skillsWorkspaceDir` must add `requiresSkillsSnapshot: true` to
+their registration. Without it, the helper rejects construction before remote
+operations because it cannot bind selected instructions to their exact bytes.
+Do not fabricate a snapshot from the mutable workspace after synchronization.

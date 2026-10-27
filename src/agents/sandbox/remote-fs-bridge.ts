@@ -446,7 +446,11 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
         ...resolveReadOnlyWorkspaceSkillMounts({ ...this.sandbox, workdir }).map(
           (mount): RemoteMountInfo => ({
             localRoot: mount.hostPath,
-            containerRoot: mount.containerPath,
+            containerRoot:
+              this.runtime.skillsWorkspace &&
+              mount.hostPath === path.join(this.runtime.skillsWorkspace.hostPath, "skills")
+                ? path.posix.join(this.runtime.skillsWorkspace.containerPath, "skills")
+                : mount.containerPath,
             writable: false,
             source: "protectedSkill",
           }),

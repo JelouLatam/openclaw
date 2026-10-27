@@ -7,7 +7,11 @@ import type { OpenClawConfig } from "../config/config.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import type { AgentSandboxConfig } from "../config/types.agents-shared.js";
 import { createWarnLogCapture } from "../logging/test-helpers/warn-log-capture.js";
-import { registerSandboxBackend, type SandboxBackendHandle } from "./sandbox/backend.js";
+import {
+  registerSandboxBackend,
+  type CreateSandboxBackendParams,
+  type SandboxBackendHandle,
+} from "./sandbox/backend.js";
 import { ensureSandboxWorkspaceForSession, resolveSandboxContext } from "./sandbox/context.js";
 import { isSandboxProvisioningError } from "./sandbox/provisioning-error.js";
 
@@ -17,6 +21,14 @@ const syncSkillsToWorkspaceMock = vi.hoisted(() =>
   vi.fn<typeof import("../skills/loading/workspace-skill-sync.runtime.js").syncWorkspaceSkills>(
     async () => [],
   ),
+);
+const syncSkillsSnapshotMock = vi.hoisted(() =>
+  vi.fn<
+    typeof import("../skills/loading/workspace-skill-sync.runtime.js").syncWorkspaceSkillsSnapshot
+  >(async ({ targetWorkspaceDir }) => ({
+    skillUsagePaths: [],
+    snapshot: { workspaceDir: targetWorkspaceDir, revision: "a".repeat(64) },
+  })),
 );
 const ensureSandboxBrowserMock = vi.hoisted(() =>
   vi.fn<typeof import("./sandbox/browser.js").ensureSandboxBrowser>(async () => null),
@@ -68,6 +80,7 @@ vi.mock("../skills/runtime/remote.js", () => ({
 
 vi.mock("../skills/loading/workspace-skill-sync.runtime.js", () => ({
   syncWorkspaceSkills: syncSkillsToWorkspaceMock,
+  syncWorkspaceSkillsSnapshot: syncSkillsSnapshotMock,
 }));
 
 function createBackend(
@@ -826,8 +839,76 @@ describe("resolveSandboxContext", () => {
     ).resolves.toBe("# User owned\n");
   }, 15_000);
 
+  it("carries one prepared skill snapshot into the backend and its exact context paths", async () => {
+    syncSkillsToWorkspaceMock.mockClear();
+    syncSkillsSnapshotMock.mockClear();
+    const workspaceDir = await createSandboxFixtureDir("snapshot-source");
+    const snapshot = {
+      workspaceDir: await createSandboxFixtureDir("snapshot-generation"),
+      revision: "b".repeat(64),
+    };
+    const skillFile = path.join(workspaceDir, "skills", "demo", "SKILL.md");
+    const projection = {
+      hostPath: snapshot.workspaceDir,
+      containerPath: `/remote/workspace/.openclaw/sandbox-skills/generations/${snapshot.revision}`,
+    };
+    syncSkillsSnapshotMock.mockImplementationOnce(async ({ targetWorkspaceDir }) => ({
+      snapshot,
+      skillUsagePaths: [
+        {
+          readPath: path.join(targetWorkspaceDir, "skills", "demo", "SKILL.md"),
+          skillFile,
+          skillName: "demo",
+          skillSource: "workspace",
+        },
+      ],
+    }));
+    const factory = vi.fn(async (_params: CreateSandboxBackendParams) =>
+      createBackend({
+        id: "snapshot-backend",
+        runtimeId: "snapshot-runtime",
+        runtimeLabel: "Snapshot Runtime",
+        workdir: "/remote/workspace",
+        skillsWorkspace: projection,
+      }),
+    );
+    const restore = registerSandboxBackend("snapshot-backend", {
+      capabilities: { requiresSkillsSnapshot: true },
+      factory,
+    });
+    try {
+      const cfg = sandboxConfig("snapshot-backend");
+      const result = await resolveSandboxContext({
+        config: cfg,
+        sessionKey: "agent:main:snapshot",
+        workspaceDir,
+      });
+
+      expect(syncSkillsSnapshotMock).toHaveBeenCalledOnce();
+      expect(syncSkillsToWorkspaceMock).not.toHaveBeenCalled();
+      const [syncOptions] = syncSkillsSnapshotMock.mock.calls[0] ?? [];
+      expect(syncOptions).toMatchObject({ sourceWorkspaceDir: workspaceDir, config: cfg });
+      expect(factory).toHaveBeenCalledOnce();
+      expect(factory.mock.calls[0]?.[0].skillsMaterialization).toBe(snapshot);
+      expect(factory.mock.calls[0]?.[0].skillsWorkspaceDir).toBe(syncOptions?.targetWorkspaceDir);
+      expect(result?.skillsWorkspaceDir).toBe(projection.hostPath);
+      expect(result?.skillsContainerWorkdir).toBe(projection.containerPath);
+      expect(result?.skillUsagePaths).toEqual([
+        {
+          readPath: path.join(projection.hostPath, "skills", "demo", "SKILL.md"),
+          skillFile,
+          skillName: "demo",
+          skillSource: "workspace",
+        },
+      ]);
+    } finally {
+      restore();
+    }
+  });
+
   it("uses the SSH backend remote workspace for sandbox workspace info", async () => {
     syncSkillsToWorkspaceMock.mockClear();
+    syncSkillsSnapshotMock.mockClear();
     const workspaceDir = await createSandboxFixtureDir("ssh-workspace");
     const cfg: OpenClawConfig = {
       agents: {
@@ -857,6 +938,8 @@ describe("resolveSandboxContext", () => {
       /^\/remote\/openclaw\/openclaw-ssh-workspace-[a-f0-9]{32}\/workspace$/,
     );
     expect(result?.containerWorkdir).not.toBe("/workspace");
+    expect(syncSkillsSnapshotMock).toHaveBeenCalledOnce();
+    expect(syncSkillsToWorkspaceMock).not.toHaveBeenCalled();
     expect(result?.skillsWorkspaceDir).toContain(
       path.join(".openclaw", "sandbox", "skills-workspaces"),
     );

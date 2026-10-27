@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
-import fs from "node:fs/promises";
+import { addAbortListener } from "node:events";
 import path from "node:path";
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
+import { racePromiseWithAbortSignal } from "../../infra/abort-signal.js";
+import {
+  resolveCommandProcessSignal,
+  runOutsideCommandProcessScope,
+} from "../../process/exec-spawn.js";
+import type { WorkspaceSkillsSnapshot } from "../../skills/loading/workspace-skill-materialization.js";
 import type {
   SandboxBackendCommandParams,
   SandboxBackendCommandResult,
@@ -25,6 +31,12 @@ import {
 import type { RemoteShellSandboxSession } from "./remote-shell-transport.js";
 
 type PendingExec = { session: RemoteShellSandboxSession; cleanup: () => Promise<void> };
+type SkillsPublication = {
+  controller: AbortController;
+  promise: Promise<void>;
+  waiters: number;
+  settled: boolean;
+};
 
 type PreprovisionedRemoteWorkdir = { runtimeId: string; remoteWorkspaceDir: string };
 type ResolvedRemoteRuntimePaths = {
@@ -53,7 +65,34 @@ export async function createRemoteShellSandboxBackend(
   const runtimePaths = options.preprovisionedWorkdir
     ? resolvePreprovisionedRuntimePaths(options.preprovisionedWorkdir)
     : resolveRemoteShellRuntimePaths(params.cfg.ssh.workspaceRoot, params.scopeKey);
+  params.assertRuntimeCurrent?.();
+  const skillsSnapshot =
+    !options.preprovisionedWorkdir &&
+    params.cfg.workspaceAccess === "rw" &&
+    params.skillsWorkspaceDir
+      ? params.skillsMaterialization
+      : undefined;
+  if (
+    !options.preprovisionedWorkdir &&
+    params.cfg.workspaceAccess === "rw" &&
+    params.skillsWorkspaceDir &&
+    !skillsSnapshot
+  ) {
+    throw new Error("Remote sandbox skills require a completed core materialization snapshot");
+  }
+  params.assertRuntimeCurrent?.();
+  if (skillsSnapshot) {
+    if (!/^[a-f0-9]{64}$/.test(skillsSnapshot.revision)) {
+      throw new Error("Remote sandbox skills have an invalid materialization revision");
+    }
+    runtimePaths.remoteSkillsWorkspaceDir = path.posix.join(
+      runtimePaths.remoteSkillsWorkspaceDir,
+      "generations",
+      skillsSnapshot.revision,
+    );
+  }
   return new RemoteShellSandboxBackendImpl({
+    skillsSnapshot,
     createParams: params,
     preprovisionedWorkdir: options.preprovisionedWorkdir,
     backendId: options.backendId ?? params.cfg.backend,
@@ -67,12 +106,13 @@ export async function createRemoteShellSandboxBackend(
 
 class RemoteShellSandboxBackendImpl {
   private ensurePromise: Promise<void> | null = null;
-  private refreshedSkillsForNextExecWorkdir: string | null = null;
+  private skillsPublication: SkillsPublication | null = null;
   private readonly pendingExecs = new WeakMap<object, PendingExec>();
 
   constructor(
     private readonly params: {
       createParams: CreateSandboxBackendParams;
+      skillsSnapshot?: WorkspaceSkillsSnapshot;
       preprovisionedWorkdir?: PreprovisionedRemoteWorkdir;
       createSession: () => Promise<RemoteShellSandboxSession>;
       backendId: string;
@@ -94,13 +134,20 @@ class RemoteShellSandboxBackendImpl {
       configLabelKind: this.params.configLabelKind,
       workdirValidation: "backend",
       validateWorkdir: (workdir) => this.validateWorkdir(workdir),
-      discardPreparedWorkdir: (workdir) => this.discardPreparedWorkdir(workdir),
       workdirRoots: [
         this.params.runtimePaths.remoteWorkspaceDir,
         ...(this.params.preprovisionedWorkdir
           ? []
           : [this.params.runtimePaths.remoteAgentWorkspaceDir]),
       ],
+      ...(this.params.skillsSnapshot
+        ? {
+            skillsWorkspace: {
+              hostPath: this.params.skillsSnapshot.workspaceDir,
+              containerPath: this.params.runtimePaths.remoteSkillsWorkspaceDir,
+            },
+          }
+        : {}),
       remoteWorkspaceDir: this.params.runtimePaths.remoteWorkspaceDir,
       remoteAgentWorkspaceDir: this.params.runtimePaths.remoteAgentWorkspaceDir,
       buildExecSpec: async ({ command, workdir, env, usePty }) => {
@@ -111,11 +158,9 @@ class RemoteShellSandboxBackendImpl {
           env: {},
         });
         await this.ensureRuntime();
+        await this.ensureRemoteSkillsWorkspace();
         const session = await this.createSession();
         try {
-          if (!this.consumeRefreshedSkillsForNextExec(remoteWorkdir)) {
-            await this.refreshRemoteSkillsWorkspace(session);
-          }
           this.params.createParams.assertRuntimeCurrent?.();
           const prepared = await session.prepareExec({
             remoteCommand,
@@ -281,14 +326,11 @@ class RemoteShellSandboxBackendImpl {
 
   private async validateWorkdir(workdir: string): Promise<string | null> {
     await this.ensureRuntime();
+    if (isRemotePathInsideRoot(this.params.runtimePaths.remoteSkillsWorkspaceDir, workdir)) {
+      await this.ensureRemoteSkillsWorkspace();
+    }
     const session = await this.createSession();
-    let refreshedSkillsForWorkdir: string | null = null;
     try {
-      if (isRemotePathInsideRoot(this.params.runtimePaths.remoteSkillsWorkspaceDir, workdir)) {
-        await this.refreshRemoteSkillsWorkspace(session);
-        refreshedSkillsForWorkdir = workdir;
-        this.refreshedSkillsForNextExecWorkdir = workdir;
-      }
       this.params.createParams.assertRuntimeCurrent?.();
       const result = await session.runCommand({
         remoteCommand: buildRemoteWorkdirValidationCommand({
@@ -298,36 +340,10 @@ class RemoteShellSandboxBackendImpl {
         allowFailure: true,
       });
       const resolvedWorkdir = result.code === 0 ? result.stdout.toString("utf8").trim() : "";
-      if (refreshedSkillsForWorkdir) {
-        this.refreshedSkillsForNextExecWorkdir = resolvedWorkdir || null;
-      }
       return resolvedWorkdir || null;
-    } catch (error) {
-      if (
-        refreshedSkillsForWorkdir &&
-        this.refreshedSkillsForNextExecWorkdir === refreshedSkillsForWorkdir
-      ) {
-        this.refreshedSkillsForNextExecWorkdir = null;
-      }
-      throw error;
     } finally {
       await session.dispose();
     }
-  }
-
-  private discardPreparedWorkdir(workdir: string): void {
-    if (this.refreshedSkillsForNextExecWorkdir === workdir) {
-      this.refreshedSkillsForNextExecWorkdir = null;
-    }
-  }
-
-  private consumeRefreshedSkillsForNextExec(workdir: string): boolean {
-    if (this.refreshedSkillsForNextExecWorkdir !== workdir) {
-      this.refreshedSkillsForNextExecWorkdir = null;
-      return false;
-    }
-    this.refreshedSkillsForNextExecWorkdir = null;
-    return true;
   }
 
   private resolveWorkdirValidationRoot(workdir: string): string {
@@ -341,54 +357,159 @@ class RemoteShellSandboxBackendImpl {
     );
   }
 
-  private async refreshRemoteSkillsWorkspace(
-    session: RemoteShellSandboxSession,
-    signal?: AbortSignal,
-  ): Promise<void> {
-    if (
-      this.params.preprovisionedWorkdir ||
-      this.params.createParams.cfg.workspaceAccess !== "rw" ||
-      !this.params.createParams.skillsWorkspaceDir
-    ) {
+  private async ensureRemoteSkillsWorkspace(callerSignal?: AbortSignal): Promise<void> {
+    if (!this.params.skillsSnapshot) {
       return;
     }
-    await this.clearRemoteDirectory(
-      session,
-      this.params.runtimePaths.remoteSkillsWorkspaceDir,
-      signal,
-    );
-    const hasSkills = await isExistingDirectory(this.params.createParams.skillsWorkspaceDir);
+    const signal = resolveCommandProcessSignal(callerSignal);
     signal?.throwIfAborted();
-    if (!hasSkills) {
-      return;
+    let publication = this.skillsPublication;
+    if (!publication) {
+      const controller = new AbortController();
+      const next: SkillsPublication = {
+        controller,
+        waiters: 0,
+        settled: false,
+        promise: runOutsideCommandProcessScope(() =>
+          this.publishRemoteSkillsWithOwnedSession(controller.signal),
+        ),
+      };
+      next.promise = next.promise.then(
+        () => {
+          next.settled = true;
+        },
+        (error: unknown) => {
+          next.settled = true;
+          if (this.skillsPublication === next) {
+            this.skillsPublication = null;
+          }
+          throw error;
+        },
+      );
+      this.skillsPublication = publication = next;
     }
-    this.params.createParams.assertRuntimeCurrent?.();
-    await session.uploadDirectory({
-      localDir: this.params.createParams.skillsWorkspaceDir,
-      remoteDir: this.params.runtimePaths.remoteSkillsWorkspaceDir,
-      remoteRootDir: this.params.runtimePaths.runtimeRootDir,
-      signal,
-    });
+    publication.waiters += 1;
+    let released = false;
+    const release = () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      publication.waiters -= 1;
+      if (!publication.settled && publication.waiters === 0) {
+        // Retire synchronously on abort, before an awaited session can dispatch remote work.
+        if (this.skillsPublication === publication) {
+          this.skillsPublication = null;
+        }
+        publication.controller.abort(signal?.reason);
+      }
+    };
+    const listener = signal ? addAbortListener(signal, release) : undefined;
+    try {
+      await racePromiseWithAbortSignal(publication.promise, signal);
+      signal?.throwIfAborted();
+      this.params.createParams.assertRuntimeCurrent?.();
+    } catch (error) {
+      signal?.throwIfAborted();
+      throw error;
+    } finally {
+      listener?.[Symbol.dispose]();
+      release();
+      if (publication.controller.signal.aborted) {
+        // The final waiter owns stop-and-join; another caller never inherits its cancellation.
+        await publication.promise.catch(() => undefined);
+      }
+    }
   }
 
-  private async clearRemoteDirectory(
+  private async publishRemoteSkillsWithOwnedSession(signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    const session = await this.createSession();
+    try {
+      signal.throwIfAborted();
+      await this.publishRemoteSkillsWorkspace(session, signal);
+    } finally {
+      await session.dispose();
+    }
+  }
+
+  private async publishRemoteSkillsWorkspace(
     session: RemoteShellSandboxSession,
-    remoteDir: string,
     signal?: AbortSignal,
   ): Promise<void> {
-    signal?.throwIfAborted();
-    this.params.createParams.assertRuntimeCurrent?.();
-    await session.runCommand({
+    const snapshot = this.params.skillsSnapshot;
+    if (!snapshot) {
+      return;
+    }
+    const destination = this.params.runtimePaths.remoteSkillsWorkspaceDir;
+    const assertCurrent = () => {
+      signal?.throwIfAborted();
+      this.params.createParams.assertRuntimeCurrent?.();
+    };
+    assertCurrent();
+    const exists = await session.runCommand({
       remoteCommand: buildRemoteCommand([
         "/bin/sh",
         "-c",
-        `${ENSURE_REMOTE_REAL_DIRECTORY_SCRIPT}\nfind "$1" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +`,
-        "openclaw-sandbox-clear",
-        remoteDir,
+        `${ENSURE_REMOTE_REAL_DIRECTORY_SCRIPT}\nif [ -d "$3" ] && [ ! -L "$3" ]; then printf "1\\n"; else printf "0\\n"; fi`,
+        "openclaw-skills-check",
+        path.posix.dirname(destination),
         this.params.runtimePaths.runtimeRootDir,
+        destination,
       ]),
       signal,
     });
+    assertCurrent();
+    if (exists.stdout.toString("utf8").trim() === "1") {
+      return;
+    }
+    const staging = `${destination}.staging-${randomUUID()}`;
+    try {
+      await session.runCommand({
+        remoteCommand: buildRemoteCommand([
+          "/bin/sh",
+          "-c",
+          `${ENSURE_REMOTE_REAL_DIRECTORY_SCRIPT}\n(umask 077; mkdir -- "$3")`,
+          "openclaw-skills-stage",
+          path.posix.dirname(destination),
+          this.params.runtimePaths.runtimeRootDir,
+          staging,
+        ]),
+        signal,
+      });
+      assertCurrent();
+      await session.uploadDirectory({
+        localDir: snapshot.workspaceDir,
+        remoteDir: staging,
+        remoteRootDir: this.params.runtimePaths.runtimeRootDir,
+        signal,
+      });
+      assertCurrent();
+      // Publish a complete generation once. Concurrent handles only discard their own loser stage.
+      await session.runCommand({
+        remoteCommand: buildRemoteCommand([
+          "python3",
+          "-c",
+          PUBLISH_REMOTE_WORKSPACE,
+          staging,
+          destination,
+        ]),
+        signal,
+      });
+      assertCurrent();
+    } finally {
+      await session
+        .runCommand({
+          remoteCommand: buildRemoteCommand([
+            "python3",
+            "-c",
+            CLEANUP_REMOTE_WORKSPACE_STAGE,
+            staging,
+          ]),
+          allowFailure: true,
+        })
+        .catch(() => undefined);
+    }
   }
 
   async runRemoteShellScript(
@@ -397,10 +518,10 @@ class RemoteShellSandboxBackendImpl {
     params.signal?.throwIfAborted();
     await this.ensureRuntime();
     params.signal?.throwIfAborted();
+    await this.ensureRemoteSkillsWorkspace(params.signal);
+    params.signal?.throwIfAborted();
     const session = await this.createSession();
     try {
-      params.signal?.throwIfAborted();
-      await this.refreshRemoteSkillsWorkspace(session, params.signal);
       params.signal?.throwIfAborted();
       this.params.createParams.assertRuntimeCurrent?.();
       return await session.runCommand({
@@ -418,14 +539,6 @@ class RemoteShellSandboxBackendImpl {
     } finally {
       await session.dispose();
     }
-  }
-}
-
-async function isExistingDirectory(dir: string): Promise<boolean> {
-  try {
-    return (await fs.stat(dir)).isDirectory();
-  } catch {
-    return false;
   }
 }
 

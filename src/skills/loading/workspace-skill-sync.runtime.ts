@@ -1,4 +1,5 @@
 // Sandbox workspace skill synchronization is deferred behind the sandbox runtime boundary.
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
@@ -9,7 +10,6 @@ import { sha256Hex } from "../../infra/crypto-digest.js";
 import { tryReadJson, writeJson } from "../../infra/json-files.js";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { KeyedAsyncQueue } from "../../plugin-sdk/keyed-async-queue.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import { resolveUserPath } from "../../utils.js";
 import { loadSkillLibrarySelection, readSelectedSkillLibraryFiles } from "../library/selection.js";
@@ -25,10 +25,14 @@ import { resolveSkillKey } from "./frontmatter.js";
 import { shouldSyncSkillPath } from "./skill-paths.js";
 import { resolveSkillTelemetrySource } from "./source.js";
 import { prepareWorkspaceSkills } from "./workspace-skill-loader.js";
+import {
+  withSkillsWorkspaceLock,
+  SYNCED_SKILLS_MANIFEST_NAME,
+  type WorkspaceSkillsSnapshot,
+} from "./workspace-skill-materialization.js";
 
 const fsp = fs.promises;
 const skillsLogger = createSubsystemLogger("skills");
-const skillsSyncQueue = new KeyedAsyncQueue();
 
 function resolveUniqueSyncedSkillDirName(base: string, used: Set<string>): string {
   if (!used.has(base)) {
@@ -44,9 +48,8 @@ function resolveUniqueSyncedSkillDirName(base: string, used: Set<string>): strin
   }
 }
 
-const SYNCED_SKILLS_MANIFEST_NAME = ".openclaw-sync.json";
-
 type SyncedSkillsManifest = {
+  revision?: string;
   entryKeys: string[];
   skillRootsFingerprint: string;
   skillsVersion: number;
@@ -78,6 +81,7 @@ function parseSyncedSkillsManifest(value: unknown): SyncedSkillsManifest | null 
     return null;
   }
   return {
+    ...(typeof value.revision === "string" ? { revision: value.revision } : {}),
     entryKeys: value.entryKeys,
     skillRootsFingerprint: value.skillRootsFingerprint,
     skillsVersion: value.skillsVersion,
@@ -129,7 +133,7 @@ async function ensureSyncedSkillsDirectory(targetSkillsDir: string): Promise<voi
   }
 }
 
-export async function syncWorkspaceSkills(params: {
+type SyncWorkspaceSkillsParams = {
   sourceWorkspaceDir: string;
   targetWorkspaceDir: string;
   config?: OpenClawConfig;
@@ -140,14 +144,40 @@ export async function syncWorkspaceSkills(params: {
   bundledSkillsDir?: string;
   pluginSkillsDir?: string;
   skillsSnapshot?: SkillSnapshot;
-}): Promise<SkillUsagePath[]> {
+};
+
+export async function syncWorkspaceSkills(
+  params: SyncWorkspaceSkillsParams,
+): Promise<SkillUsagePath[]> {
+  return (await syncWorkspaceSkillsTransaction(params, false)).skillUsagePaths;
+}
+
+/** Bind usage and immutable bytes inside the same materialization transaction. */
+export async function syncWorkspaceSkillsSnapshot(
+  params: SyncWorkspaceSkillsParams,
+): Promise<{ skillUsagePaths: SkillUsagePath[]; snapshot: WorkspaceSkillsSnapshot }> {
+  const result = await syncWorkspaceSkillsTransaction(params, true);
+  if (!result.snapshot) {
+    throw new Error("Sandbox skill snapshot was not materialized");
+  }
+  return { skillUsagePaths: result.skillUsagePaths, snapshot: result.snapshot };
+}
+
+async function syncWorkspaceSkillsTransaction(
+  params: SyncWorkspaceSkillsParams,
+  snapshot: boolean,
+): Promise<{ skillUsagePaths: SkillUsagePath[]; snapshot?: WorkspaceSkillsSnapshot }> {
   const sourceDir = resolveUserPath(params.sourceWorkspaceDir);
   const targetDir = resolveUserPath(params.targetWorkspaceDir);
   if (sourceDir === targetDir) {
-    return [];
+    return { skillUsagePaths: [] };
   }
 
-  return await skillsSyncQueue.enqueue(`syncSkills:${targetDir}`, async () => {
+  return await withSkillsWorkspaceLock(targetDir, async (capture) => {
+    const complete = async (skillUsagePaths: SkillUsagePath[]) => ({
+      skillUsagePaths,
+      ...(snapshot ? { snapshot: await capture() } : {}),
+    });
     const targetSkillsDir = path.join(targetDir, "skills");
     const manifestPath = path.join(targetSkillsDir, SYNCED_SKILLS_MANIFEST_NAME);
     const skillsSnapshot = params.skillsSnapshot;
@@ -190,11 +220,12 @@ export async function syncWorkspaceSkills(params: {
     const manifestKey = manifest ? resolveSyncedSkillsManifestKey(manifest) : undefined;
     if (
       expectedManifestKey &&
+      manifest?.revision &&
       manifestKey === expectedManifestKey &&
       cachedUsage?.manifestKey === manifestKey &&
       cachedUsage.sourceVersion === sourceVersion
     ) {
-      return cachedUsage.skillUsagePaths.map((entry) => ({ ...entry }));
+      return await complete(cachedUsage.skillUsagePaths.map((entry) => ({ ...entry })));
     }
 
     const loadOptions = {
@@ -347,6 +378,14 @@ export async function syncWorkspaceSkills(params: {
         skillRootsFingerprint,
         skillsVersion,
       };
+      // Process-local resource counters invalidate copies, but cannot name durable generations.
+      // Reuse only a generation this owner knows it preserved; a cold materialization gets a fresh id.
+      nextManifest.revision =
+        previousUsage &&
+        manifest?.revision &&
+        resolveSyncedSkillsManifestKey(nextManifest) === manifestKey
+          ? manifest.revision
+          : randomBytes(32).toString("hex");
       await writeJson(manifestPath, nextManifest, { trailingNewline: true });
       syncedSkillsUsageCache.set(targetSkillsDir, {
         destinations: new Map(
@@ -362,6 +401,6 @@ export async function syncWorkspaceSkills(params: {
       });
       pruneMapToMaxSize(syncedSkillsUsageCache, 100);
     }
-    return skillUsagePaths;
+    return await complete(skillUsagePaths);
   });
 }

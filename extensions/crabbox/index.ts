@@ -94,6 +94,7 @@ export default definePluginEntry({
         pluginConfig: sandboxConfig,
       };
       const unregister = registerSandboxBackend(CRABBOX_SANDBOX_BACKEND_ID, {
+        capabilities: { requiresSkillsSnapshot: true },
         factory: createCrabboxSandboxBackendFactory(backendDependencies),
         reserveRuntimeId: mintCrabboxSandboxLeaseId,
         manager: createCrabboxSandboxBackendManager(backendDependencies),

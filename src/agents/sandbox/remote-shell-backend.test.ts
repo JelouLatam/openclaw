@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { hasErrnoCode } from "../../infra/errno.js";
+import { resolveCommandProcessSignal, withCommandProcessScope } from "../../process/exec-spawn.js";
 import { resolveSandboxConfigForAgent } from "./config.js";
 import { createRemoteShellSandboxBackend } from "./remote-shell-backend.js";
 import {
@@ -12,21 +13,33 @@ import {
 } from "./remote-shell-transport.js";
 
 type RemoteShellUploadParams = Parameters<RemoteShellSandboxSession["uploadDirectory"]>[0];
+type ColdOperation = "shell" | "exec" | "workdir";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
 async function createCommandCancellationFixture() {
   const workspaceDir = tempDirs.make("remote-shell-cancellation-");
+  await fs.mkdir(path.join(workspaceDir, "skills"));
+  await fs.writeFile(
+    path.join(workspaceDir, "skills", ".openclaw-sync.json"),
+    JSON.stringify({ revision: "a".repeat(64) }),
+  );
   const session = {
-    runCommand: vi.fn<RemoteShellSandboxSession["runCommand"]>(async () => ({
-      stdout: Buffer.from("1\n"),
-      stderr: Buffer.alloc(0),
-      code: 0,
-    })),
+    runCommand: vi.fn<RemoteShellSandboxSession["runCommand"]>(
+      async ({ remoteCommand, signal }) => {
+        // The real command transport inherits this process scope in addition to its explicit signal.
+        resolveCommandProcessSignal(signal)?.throwIfAborted();
+        return {
+          stdout: Buffer.from(remoteCommand.includes("openclaw-skills-check") ? "0\n" : "1\n"),
+          stderr: Buffer.alloc(0),
+          code: 0,
+        };
+      },
+    ),
     uploadDirectory: vi.fn<RemoteShellSandboxSession["uploadDirectory"]>(async () => {}),
-    prepareExec: async () => {
+    prepareExec: vi.fn<RemoteShellSandboxSession["prepareExec"]>(async () => {
       throw new Error("unexpected exec preparation");
-    },
+    }),
     dispose: vi.fn(async () => {}),
   } satisfies RemoteShellSandboxSession;
   const createSession = vi.fn(async () => session);
@@ -49,27 +62,47 @@ async function createCommandCancellationFixture() {
       workspaceDir,
       agentWorkspaceDir: workspaceDir,
       skillsWorkspaceDir: workspaceDir,
+      skillsMaterialization: { workspaceDir, revision: "a".repeat(64) },
     },
     { createSession },
   );
-  await backend.runShellCommand({ script: "true" });
+  // Bootstrap is complete, but publication of the new skills generation is still cold.
+  await backend.validateWorkdir?.(backend.workdir);
   session.runCommand.mockClear();
   session.uploadDirectory.mockClear();
   session.dispose.mockClear();
   createSession.mockClear();
-  return { backend, session, createSession };
+  const coldOperation = (entry: ColdOperation, signal?: AbortSignal): Promise<unknown> => {
+    if (entry === "exec") {
+      return backend.buildExecSpec({ command: "first sentinel", env: {}, usePty: false });
+    }
+    if (entry === "workdir") {
+      if (!backend.validateWorkdir || !backend.skillsWorkspace) {
+        throw new Error("Skill workdir validation is missing");
+      }
+      return backend.validateWorkdir(backend.skillsWorkspace.containerPath);
+    }
+    return backend.runShellCommand({ script: "first sentinel", signal });
+  };
+  return { backend, session, createSession, coldOperation };
 }
 
 describe("remote shell command cancellation", () => {
-  it.each(["clear", "upload"] as const)(
-    "cancels the skills %s and joins it and session disposal before rejecting",
-    async (phase) => {
-      const { backend, session } = await createCommandCancellationFixture();
+  it.each([
+    ["shell", "check"],
+    ["shell", "upload"],
+    ["exec", "upload"],
+    ["workdir", "upload"],
+  ] as const)(
+    "cancels cold %s during skills %s and joins publication and session disposal",
+    async (entry, phase) => {
+      const { session, coldOperation } = await createCommandCancellationFixture();
       const controller = new AbortController();
       const entered = createDeferred();
       const release = createDeferred();
       const disposing = createDeferred();
       const releaseDisposal = createDeferred();
+      const cancelled = createDeferred();
       let cancellationObserved = false;
       let completed = false;
       const hold = async (signal?: AbortSignal) => {
@@ -77,6 +110,7 @@ describe("remote shell command cancellation", () => {
           "abort",
           () => {
             cancellationObserved = true;
+            cancelled.resolve();
           },
           { once: true },
         );
@@ -84,7 +118,7 @@ describe("remote shell command cancellation", () => {
         await release.promise;
         signal?.throwIfAborted();
       };
-      if (phase === "clear") {
+      if (phase === "check") {
         session.runCommand.mockImplementationOnce(async ({ signal }) => {
           await hold(signal);
           return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), code: 0 };
@@ -96,10 +130,10 @@ describe("remote shell command cancellation", () => {
         disposing.resolve();
         await releaseDisposal.promise;
       });
-      const command = backend.runShellCommand({
-        script: "touch sentinel",
-        signal: controller.signal,
-      });
+      const command =
+        entry === "shell"
+          ? coldOperation(entry, controller.signal)
+          : withCommandProcessScope(() => coldOperation(entry), controller.signal);
       const result = command.then(
         () => {
           completed = true;
@@ -113,6 +147,7 @@ describe("remote shell command cancellation", () => {
       try {
         await entered.promise;
         controller.abort(new Error("interrupt deadline"));
+        await cancelled.promise;
         expect(cancellationObserved).toBe(true);
         expect(session.dispose).not.toHaveBeenCalled();
         expect(completed).toBe(false);
@@ -121,9 +156,24 @@ describe("remote shell command cancellation", () => {
         expect(completed).toBe(false);
         releaseDisposal.resolve();
         expect(await result).toEqual(expect.objectContaining({ message: "interrupt deadline" }));
-        expect(session.runCommand).toHaveBeenCalledOnce();
+        expect(
+          session.runCommand.mock.calls.some(([params]) =>
+            params.remoteCommand.includes("openclaw-sandbox-fs"),
+          ),
+        ).toBe(false);
+        expect(
+          session.runCommand.mock.calls.some(([params]) =>
+            params.remoteCommand.includes("rename_no_replace"),
+          ),
+        ).toBe(false);
         expect(session.uploadDirectory).toHaveBeenCalledTimes(phase === "upload" ? 1 : 0);
         expect(session.dispose).toHaveBeenCalledOnce();
+        expect(session.prepareExec).not.toHaveBeenCalled();
+        expect(
+          session.runCommand.mock.calls.some(([params]) =>
+            params.remoteCommand.includes("openclaw-validate-workdir"),
+          ),
+        ).toBe(false);
       } finally {
         release.resolve();
         releaseDisposal.resolve();
@@ -131,6 +181,153 @@ describe("remote shell command cancellation", () => {
       }
     },
   );
+
+  it.each([
+    ["first", "shell"],
+    ["second", "shell"],
+    ["first", "exec"],
+    ["first", "workdir"],
+  ] as const)(
+    "lets the %s cold %s waiter cancel without stopping the live sibling",
+    async (cancelledCaller, entry) => {
+      const { backend, session, coldOperation } = await createCommandCancellationFixture();
+      const firstController = cancelledCaller === "first" ? new AbortController() : undefined;
+      const secondController = new AbortController();
+      const entered = createDeferred();
+      const release = createDeferred();
+      const joined = createDeferred();
+      let publicationSignal: AbortSignal | undefined;
+      session.uploadDirectory.mockImplementationOnce(async ({ signal }) => {
+        publicationSignal = signal;
+        entered.resolve();
+        await release.promise;
+        signal?.throwIfAborted();
+      });
+      const addListener = secondController.signal.addEventListener.bind(secondController.signal);
+      const listener = vi
+        .spyOn(secondController.signal, "addEventListener")
+        .mockImplementation((...args) => {
+          addListener(...args);
+          if (args[0] === "abort") {
+            joined.resolve();
+          }
+        });
+      const observe = (promise: Promise<unknown>) => promise.catch((error: unknown) => error);
+      const first = observe(
+        withCommandProcessScope(
+          () => coldOperation(entry, entry === "shell" ? firstController?.signal : undefined),
+          firstController?.signal,
+        ),
+      );
+      await entered.promise;
+      const second = observe(
+        backend.runShellCommand({ script: "second sentinel", signal: secondController.signal }),
+      );
+      try {
+        await joined.promise;
+        const reason = new Error("cancel only my command");
+        (firstController ?? secondController).abort(reason);
+        expect(await (cancelledCaller === "first" ? first : second)).toBe(reason);
+        expect(publicationSignal?.aborted).toBe(false);
+        expect(session.dispose).not.toHaveBeenCalled();
+        release.resolve();
+        expect(await (cancelledCaller === "first" ? second : first)).toMatchObject({ code: 0 });
+        expect(session.uploadDirectory).toHaveBeenCalledOnce();
+        expect(session.dispose).toHaveBeenCalledTimes(2); // Publication, then the live command.
+        expect(session.prepareExec).not.toHaveBeenCalled();
+        const commands = session.runCommand.mock.calls.filter(([params]) =>
+          params.remoteCommand.includes("openclaw-sandbox-fs"),
+        );
+        expect(commands).toHaveLength(1);
+        expect(commands[0]?.[0].remoteCommand).toContain(
+          cancelledCaller === "first" ? "second sentinel" : "first sentinel",
+        );
+      } finally {
+        release.resolve();
+        listener.mockRestore();
+        await Promise.all([first, second]);
+      }
+    },
+  );
+
+  it("aborts and joins the owned publication when every cold waiter cancels", async () => {
+    const { backend, session } = await createCommandCancellationFixture();
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const entered = createDeferred();
+    const release = createDeferred();
+    const joined = createDeferred();
+    const stopped = createDeferred();
+    const disposing = createDeferred();
+    const releaseDisposal = createDeferred();
+    session.uploadDirectory.mockImplementationOnce(async ({ signal }) => {
+      signal?.addEventListener("abort", () => stopped.resolve(), { once: true });
+      entered.resolve();
+      await release.promise;
+      signal?.throwIfAborted();
+    });
+    session.dispose.mockImplementationOnce(async () => {
+      disposing.resolve();
+      await releaseDisposal.promise;
+    });
+    const addListener = secondController.signal.addEventListener.bind(secondController.signal);
+    const listener = vi
+      .spyOn(secondController.signal, "addEventListener")
+      .mockImplementation((...args) => {
+        addListener(...args);
+        if (args[0] === "abort") {
+          joined.resolve();
+        }
+      });
+    const first = backend
+      .runShellCommand({ script: "first sentinel", signal: firstController.signal })
+      .catch((error: unknown) => error);
+    await entered.promise;
+    let finished = false;
+    const second = backend
+      .runShellCommand({ script: "second sentinel", signal: secondController.signal })
+      .then(
+        () => {
+          finished = true;
+        },
+        (error: unknown) => {
+          finished = true;
+          return error;
+        },
+      );
+    try {
+      await joined.promise;
+      firstController.abort(new Error("first stopped"));
+      expect(await first).toMatchObject({ message: "first stopped" });
+      secondController.abort(new Error("second stopped"));
+      await stopped.promise;
+      expect(finished).toBe(false);
+      expect(session.dispose).not.toHaveBeenCalled();
+      release.resolve();
+      await disposing.promise;
+      expect(finished).toBe(false);
+      releaseDisposal.resolve();
+      expect(await second).toMatchObject({ message: "second stopped" });
+      expect(session.dispose).toHaveBeenCalledOnce();
+      expect(
+        session.runCommand.mock.calls.some(
+          ([params]) =>
+            params.remoteCommand.includes("rename_no_replace") ||
+            params.remoteCommand.includes("openclaw-sandbox-fs"),
+        ),
+      ).toBe(false);
+      expect(
+        session.runCommand.mock.calls.some(([params]) =>
+          params.remoteCommand.includes("shutil.rmtree"),
+        ),
+      ).toBe(true);
+    } finally {
+      release.resolve();
+      releaseDisposal.resolve();
+      listener.mockRestore();
+      await Promise.all([first, second]);
+    }
+  });
 
   it("disposes a session acquired after cancellation without starting remote work", async () => {
     const { backend, session, createSession } = await createCommandCancellationFixture();

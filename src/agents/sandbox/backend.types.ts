@@ -44,6 +44,8 @@ export type CreateSandboxBackendParams = {
   workspaceSource?: "managed-worktree";
   agentWorkspaceDir: string;
   skillsWorkspaceDir?: string;
+  /** Exact immutable snapshot returned by the skill materialization transaction. */
+  skillsMaterialization?: { workspaceDir: string; revision: string };
   readOnlyResourceMounts?: Array<{ hostPath: string; containerPath: string }>;
   cfg: SandboxConfig;
   requireCurrentConfig?: boolean;
@@ -78,6 +80,8 @@ export type RegisteredSandboxBackend = {
   capabilities?: {
     /** Can project host-owned directories read-only into the execution environment. */
     readOnlyResourceMounts?: boolean;
+    /** Prepare an immutable materialization before invoking this backend factory. */
+    requiresSkillsSnapshot?: boolean;
   };
 } & (
   | { factory: SandboxBackendFactory; reserveRuntimeId?: undefined }
