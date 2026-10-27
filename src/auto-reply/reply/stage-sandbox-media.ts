@@ -6,8 +6,14 @@ import { safeFileURLToPath } from "@openclaw/fs-safe/advanced";
 import { isInboundPathAllowed } from "@openclaw/media-core/inbound-path-policy";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { sliceUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { assertSandboxPath } from "../../agents/sandbox-paths.js";
-import { ensureSandboxWorkspaceForSession } from "../../agents/sandbox.js";
+import {
+  ensureSandboxWorkspaceForSession,
+  resolveSandboxConfigForAgent,
+  resolveSandboxContext,
+} from "../../agents/sandbox.js";
+import type { SandboxFsBridge } from "../../agents/sandbox/fs-bridge.types.js";
 import { slugifySessionKey } from "../../agents/sandbox/shared.js";
 import { getAgentWorkspaceAccess } from "../../agents/workspace-access.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -51,9 +57,14 @@ export async function stageSandboxMedia(params: {
   workspaceDir: string;
   remoteMediaMode?: "sandbox-or-cache" | "cache";
   abortSignal?: AbortSignal;
+  assertCurrent?: () => void;
 }): Promise<StageSandboxMediaResult> {
   const { ctx, sessionCtx, cfg, sessionKey, workspaceDir, abortSignal } = params;
-  abortSignal?.throwIfAborted();
+  const assertCurrent = () => {
+    abortSignal?.throwIfAborted();
+    params.assertCurrent?.();
+  };
+  assertCurrent();
   const media = normalizeMediaFacts(ctx.media);
   const pathEntries = media.flatMap((fact, index) => {
     const mediaPath = normalizeOptionalString(fact.path);
@@ -91,7 +102,30 @@ export async function stageSandboxMedia(params: {
     return EMPTY_STAGE_RESULT;
   }
 
-  await fs.mkdir(effectiveWorkspaceDir, { recursive: true });
+  // SSH workspaces are seeded once. Copy each later upload through the same
+  // filesystem bridge the file/exec tools use, never into the stale local seed.
+  const agentId = resolveSessionAgentId({ config: cfg, sessionKey, agentId: params.agentId });
+  const needsRemoteDestination =
+    sandbox && resolveSandboxConfigForAgent(cfg, agentId).backend === "ssh";
+  const remoteSandbox = needsRemoteDestination
+    ? await resolveSandboxContext({
+        config: cfg,
+        agentId: params.agentId,
+        sessionKey,
+        workspaceDir,
+      })
+    : null;
+  assertCurrent();
+  const bridge = remoteSandbox?.fsBridge;
+  if (needsRemoteDestination && !bridge?.createFileExclusive) {
+    throw new Error("Remote sandbox cannot create attachment files safely");
+  }
+  if (!bridge) {
+    await fs.mkdir(effectiveWorkspaceDir, { recursive: true });
+  }
+  const destination = bridge
+    ? sandboxStagingRoot(bridge, abortSignal, assertCurrent)
+    : await fsRoot(effectiveWorkspaceDir);
   const remoteAttachmentRoots = ctx.MediaRemoteHost
     ? (resolveChannelRemoteInboundAttachmentRoots({ cfg, ctx }) ?? [])
     : [];
@@ -104,13 +138,13 @@ export async function stageSandboxMedia(params: {
   const prepareDestination = async () => {
     if (!stagingReady) {
       // Keep the privacy marker ahead of file publication, after source validation.
-      await ensureStagedInputDirectory(effectiveWorkspaceDir, inputDirectory, abortSignal);
+      await ensureStagedInputDirectory(destination, inputDirectory, abortSignal);
       stagingReady = true;
     }
   };
 
   for (const entry of pathEntries) {
-    abortSignal?.throwIfAborted();
+    assertCurrent();
     const source = await resolveStageableMediaSource(entry.path);
     if (!source) {
       continue;
@@ -133,18 +167,20 @@ export async function stageSandboxMedia(params: {
         await stageRemoteFileIntoRoot({
           remoteHost: ctx.MediaRemoteHost,
           remotePath: source,
-          rootDir: effectiveWorkspaceDir,
+          destination,
           relativeDestPath: relativeDest,
           abortSignal,
+          assertCurrent,
           prepareDestination,
         });
       } else {
         const copySource = await fs.realpath(source).catch(() => source);
         await stageLocalFileIntoRoot({
           sourcePath: copySource,
-          rootDir: effectiveWorkspaceDir,
+          destination,
           relativeDestPath: relativeDest,
           abortSignal,
+          assertCurrent,
           prepareDestination,
         });
       }
@@ -177,7 +213,7 @@ export async function stageSandboxMedia(params: {
 
   // Path checks and alias resolution can finish after cancellation. Fence even
   // an empty result so callers cannot start the next preprocessing phase.
-  abortSignal?.throwIfAborted();
+  assertCurrent();
   if (staged.size === 0) {
     return { staged };
   }
@@ -254,31 +290,75 @@ async function resolveStageableMediaSource(value: string): Promise<string | null
   return inboundReference?.physicalPath ?? resolveAbsolutePath(raw);
 }
 
+type StagingRoot = {
+  exists(filePath: string): Promise<boolean>;
+  readText(filePath: string, options: { maxBytes: number }): Promise<string>;
+  create(
+    filePath: string,
+    data: string | Buffer,
+    options?: { mode?: number; assertBeforeMutation?: () => void },
+  ): Promise<void>;
+};
+
+function sandboxStagingRoot(
+  bridge: SandboxFsBridge,
+  signal: AbortSignal | undefined,
+  assertCurrent: () => void,
+): StagingRoot {
+  const create = bridge.createFileExclusive!.bind(bridge);
+  return {
+    async exists(filePath) {
+      assertCurrent();
+      const stat = await bridge.stat({ filePath, signal });
+      assertCurrent();
+      return stat !== null;
+    },
+    async readText(filePath, options) {
+      assertCurrent();
+      const data = await bridge.readFile({ filePath, maxBytes: options.maxBytes, signal });
+      assertCurrent();
+      return data.toString("utf8");
+    },
+    async create(filePath, data, options) {
+      assertCurrent();
+      options?.assertBeforeMutation?.();
+      const result = await create({ filePath, data, mkdir: true, signal });
+      assertCurrent();
+      if (result !== "created") {
+        throw new Error("Attachment staging destination already exists");
+      }
+    },
+  };
+}
+
 async function stageLocalFileIntoRoot(params: {
   sourcePath: string;
-  rootDir: string;
+  destination: StagingRoot;
   relativeDestPath: string;
   abortSignal?: AbortSignal;
+  assertCurrent: () => void;
   prepareDestination: () => Promise<void>;
 }): Promise<void> {
-  const root = await fsRoot(params.rootDir);
   const source = await readLocalFileSafely({
     filePath: params.sourcePath,
     maxBytes: SANDBOX_MEDIA_MAX_BYTES,
   });
   // A completed read must not start a new copy after cancellation.
-  params.abortSignal?.throwIfAborted();
+  params.assertCurrent();
   await params.prepareDestination();
-  params.abortSignal?.throwIfAborted();
-  await root.create(params.relativeDestPath, source.buffer);
+  params.assertCurrent();
+  await params.destination.create(params.relativeDestPath, source.buffer, {
+    assertBeforeMutation: params.assertCurrent,
+  });
 }
 
 async function stageRemoteFileIntoRoot(params: {
   remoteHost: string;
   remotePath: string;
-  rootDir: string;
+  destination: StagingRoot;
   relativeDestPath: string;
   abortSignal?: AbortSignal;
+  assertCurrent: () => void;
   prepareDestination: () => Promise<void>;
 }): Promise<void> {
   const { abortSignal } = params;
