@@ -56,6 +56,7 @@ export function buildRemoteProtectedSkillRoots(params: {
     path.posix.join(root, "skills"),
     path.posix.join(root, ".agents", "skills"),
     path.posix.join(root, ".openclaw", "sandbox-skills", "skills"),
+    path.posix.join(root, ".openclaw", "sandbox-skills", "generations"),
   ]);
 }
 

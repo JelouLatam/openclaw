@@ -67,6 +67,8 @@ export type SandboxBackendHandle = {
   runtimeId: string;
   runtimeLabel: string;
   workdir: string;
+  /** Immutable materialized skills selected by this backend generation. */
+  skillsWorkspace?: { hostPath: string; containerPath: string };
   env?: Record<string, string>;
   configLabel?: string;
   configLabelKind?: string;

@@ -1,5 +1,6 @@
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
+import path from "node:path";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
@@ -23,7 +24,11 @@ import {
   resolveSubagentSessionAttachmentRootDir,
   SANDBOX_SUBAGENT_ATTACHMENTS_MOUNT,
 } from "../subagents/subagent-attachment-paths.js";
-import { createSandboxBackend, getSandboxBackendWorkdirResolver } from "./backend.js";
+import {
+  createSandboxBackend,
+  getSandboxBackendWorkdirResolver,
+  getSandboxBackendCapabilities,
+} from "./backend.js";
 import { ensureSandboxBrowser } from "./browser.js";
 import { resolveSandboxConfigForAgent } from "./config.js";
 import { resolveSandboxDockerUser } from "./docker-user.js";
@@ -44,6 +49,11 @@ const loadSyncWorkspaceSkills = createLazyRuntimeNamedExport(
   "syncWorkspaceSkills",
 );
 
+const loadSyncWorkspaceSkillsSnapshot = createLazyRuntimeNamedExport(
+  () => import("../../skills/loading/workspace-skill-sync.runtime.js"),
+  "syncWorkspaceSkillsSnapshot",
+);
+
 async function syncSandboxSkillsToWorkspace(params: {
   sourceWorkspaceDir: string;
   targetWorkspaceDir: string;
@@ -52,7 +62,12 @@ async function syncSandboxSkillsToWorkspace(params: {
   rawSessionKey: string;
   execOverrides?: ExecPolicyOverrides;
   skillsSnapshot?: SkillSnapshot;
-}): Promise<{ eligibility?: SkillEligibilityContext; skillUsagePaths?: SkillUsagePath[] }> {
+  requiresSkillsSnapshot?: boolean;
+}): Promise<{
+  eligibility?: SkillEligibilityContext;
+  skillUsagePaths?: SkillUsagePath[];
+  skillsMaterialization?: { workspaceDir: string; revision: string };
+}> {
   try {
     const [syncWorkspaceSkills, { getRemoteSkillEligibility }, { resolveNodeExecEligibility }] =
       await Promise.all([
@@ -73,19 +88,28 @@ async function syncSandboxSkillsToWorkspace(params: {
         advertiseExecNode: nodeSkills.canExec,
       }),
     };
-    const skillUsagePaths = await syncWorkspaceSkills({
+    const syncParams = {
       sourceWorkspaceDir: params.sourceWorkspaceDir,
       targetWorkspaceDir: params.targetWorkspaceDir,
       config: params.config,
       agentId: params.agentId,
       eligibility,
       skillsSnapshot: params.skillsSnapshot,
-    });
-    return { eligibility, skillUsagePaths };
+    };
+    if (params.requiresSkillsSnapshot) {
+      const syncSnapshot = await loadSyncWorkspaceSkillsSnapshot();
+      const result = await syncSnapshot(syncParams);
+      return {
+        eligibility,
+        skillUsagePaths: result.skillUsagePaths,
+        skillsMaterialization: result.snapshot,
+      };
+    }
+    return { eligibility, skillUsagePaths: await syncWorkspaceSkills(syncParams) };
   } catch (error) {
     const message = error instanceof Error ? error.message : JSON.stringify(error);
     defaultRuntime.error?.(`Sandbox skill sync failed: ${message}`);
-    if (params.skillsSnapshot?.librarySelections?.length) {
+    if (params.requiresSkillsSnapshot || params.skillsSnapshot?.librarySelections?.length) {
       throw error;
     }
     return {};
@@ -103,6 +127,7 @@ async function ensureSandboxWorkspaceLayout(
   skillsWorkspaceDir: string;
   skillsEligibility?: SkillEligibilityContext;
   skillUsagePaths?: SkillUsagePath[];
+  skillsMaterialization?: { workspaceDir: string; revision: string };
   workspaceDir: string;
 }> {
   const { rawSessionKey, runtime, localWorkspace } = selected;
@@ -130,6 +155,9 @@ async function ensureSandboxWorkspaceLayout(
     await fs.mkdir(workspaceDir, { recursive: true });
   }
   const syncedSkills = await syncSandboxSkillsToWorkspace({
+    requiresSkillsSnapshot:
+      cfg.workspaceAccess === "rw" &&
+      getSandboxBackendCapabilities(cfg.backend)?.requiresSkillsSnapshot === true,
     sourceWorkspaceDir: agentWorkspaceDir,
     targetWorkspaceDir: cfg.workspaceAccess === "rw" ? skillsWorkspaceDir : sandboxWorkspaceDir,
     config: params.config,
@@ -146,6 +174,9 @@ async function ensureSandboxWorkspaceLayout(
     skillsWorkspaceDir,
     ...(syncedSkills.eligibility ? { skillsEligibility: syncedSkills.eligibility } : {}),
     ...(syncedSkills.skillUsagePaths ? { skillUsagePaths: syncedSkills.skillUsagePaths } : {}),
+    ...(syncedSkills.skillsMaterialization
+      ? { skillsMaterialization: syncedSkills.skillsMaterialization }
+      : {}),
     workspaceDir,
   };
 }
@@ -301,6 +332,7 @@ async function resolveProvisionedSandboxContext(
     skillsEligibility,
     skillUsagePaths,
     skillsWorkspaceDir,
+    skillsMaterialization,
     workspaceDir,
   } = await ensureSandboxWorkspaceLayout(params, selected, params.execOverrides);
   localWorkspace?.assertCurrent();
@@ -353,6 +385,7 @@ async function resolveProvisionedSandboxContext(
           : {}),
         agentWorkspaceDir,
         skillsWorkspaceDir,
+        ...(skillsMaterialization ? { skillsMaterialization } : {}),
         readOnlyResourceMounts,
         cfg: resolvedCfg,
         ...(params.requireCurrentConfig !== undefined
@@ -420,9 +453,24 @@ async function resolveProvisionedSandboxContext(
     sessionKey: rawSessionKey,
     workspaceDir,
     agentWorkspaceDir,
-    skillsWorkspaceDir,
+    skillsWorkspaceDir: backend.skillsWorkspace?.hostPath ?? skillsWorkspaceDir,
+    ...(backend.skillsWorkspace
+      ? { skillsContainerWorkdir: backend.skillsWorkspace.containerPath }
+      : {}),
     ...(skillsEligibility ? { skillsEligibility } : {}),
-    ...(skillUsagePaths ? { skillUsagePaths } : {}),
+    ...(skillUsagePaths
+      ? {
+          skillUsagePaths: backend.skillsWorkspace
+            ? skillUsagePaths.map((usage) => ({
+                ...usage,
+                readPath: path.join(
+                  backend.skillsWorkspace!.hostPath,
+                  path.relative(skillsWorkspaceDir, usage.readPath),
+                ),
+              }))
+            : skillUsagePaths,
+        }
+      : {}),
     ...(readOnlyResourceMounts ? { readOnlyResourceMounts } : {}),
     workspaceAccess: resolvedCfg.workspaceAccess,
     runtimeId: backend.runtimeId,

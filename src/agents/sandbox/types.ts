@@ -112,6 +112,7 @@ export type SandboxContext = {
   workspaceDir: string;
   agentWorkspaceDir: string;
   skillsWorkspaceDir?: string;
+  skillsContainerWorkdir?: string;
   skillsEligibility?: SkillEligibilityContext;
   skillUsagePaths?: SkillUsagePath[];
   readOnlyResourceMounts?: Array<{ hostPath: string; containerPath: string }>;

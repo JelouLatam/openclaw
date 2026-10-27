@@ -278,7 +278,7 @@ function buildRemoteDirectoryScript(create: boolean): string {
           '  if [ -e "$next" ]; then',
           '    if [ ! -d "$next" ]; then echo "unsafe remote directory component: $next" >&2; exit 1; fi',
           "  else",
-          '    mkdir -- "$next"',
+          '    mkdir -- "$next" || { [ ! -L "$next" ] && [ -d "$next" ]; }',
           "  fi",
         ]
       : ['  if [ ! -d "$next" ]; then echo "remote directory not found: $next" >&2; exit 1; fi']),
