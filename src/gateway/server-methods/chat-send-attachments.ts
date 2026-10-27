@@ -138,6 +138,7 @@ async function prestageMediaPathOffloads(params: {
         sessionKey: params.sessionKey,
         workspaceDir,
         abortSignal: params.abortSignal,
+        assertCurrent: params.assertWorkAdmissionCurrent,
       });
     } catch (stageErr) {
       // Cancellation is terminal; only ordinary managed-PDF failures can use
