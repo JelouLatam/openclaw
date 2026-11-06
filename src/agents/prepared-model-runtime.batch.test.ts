@@ -13,6 +13,7 @@ import { createDeferredCore } from "../shared/deferred.js";
 import * as inlineProviderModels from "./embedded-agent-runner/model.inline-provider.js";
 import * as legacyAuth from "./legacy-inherited-auth-dir.js";
 import * as configuredModels from "./model-selection-shared.js";
+import { getPreparedModelCatalogOwnerSnapshot } from "./prepared-model-catalog.js";
 import {
   advancePreparedModelRuntimeConfig,
   getPreparedModelRuntimeSnapshot,
@@ -22,6 +23,7 @@ import {
   refreshPreparedModelRuntimeSnapshots,
   registerPreparedModelRuntimePublicationListener,
 } from "./prepared-model-runtime.js";
+import { withPreparedModelRuntimeReadBatch } from "./prepared-model-runtime.owner.js";
 import { getPreparedModelRuntimeStartupStatus } from "./prepared-model-runtime.startup-status.js";
 import { AuthStorage } from "./sessions/auth-storage.js";
 
@@ -513,6 +515,46 @@ describe("prepared catalog source sharing", () => {
           gatewayLifecycle: true,
           catalogMode: "static",
         });
+        counts.push(
+          digests.mock.calls.filter(
+            ([value]) => typeof value === "string" && value.includes(marker),
+          ).length,
+        );
+      }
+      expect(counts[0]).toBeGreaterThan(0);
+      expect(counts[1]).toBe(counts[0]);
+    } finally {
+      digests.mockRestore();
+    }
+  });
+
+  it("hashes a fleet read's config once per batch, not once per agent", async () => {
+    const marker = "synthetic-fleet-read-hash-boundary";
+    const digests = vi.spyOn(cryptoDigest, "sha256Base64Url");
+    try {
+      const counts: number[] = [];
+      for (const size of [8, 16]) {
+        mocks.configuredAgentIds = Array.from({ length: size }, (_, index) => `reader-${index}`);
+        const config: OpenClawConfig = {
+          agents: {
+            entries: Object.fromEntries(
+              mocks.configuredAgentIds.map((id) => [id, { name: marker }]),
+            ),
+          },
+        };
+        await refreshPreparedModelRuntimeSnapshots(config, {
+          gatewayLifecycle: true,
+          catalogMode: "static",
+        });
+        // A Gateway read carries a fresh, mutable copy of the same config, as sessions.list does.
+        const readConfig = structuredClone(config);
+        digests.mockClear();
+        const owners = withPreparedModelRuntimeReadBatch(() =>
+          mocks.configuredAgentIds.map((agentId) =>
+            getPreparedModelCatalogOwnerSnapshot({ agentId, config: readConfig, readOnly: true }),
+          ),
+        );
+        expect(owners.every(Boolean)).toBe(true);
         counts.push(
           digests.mock.calls.filter(
             ([value]) => typeof value === "string" && value.includes(marker),

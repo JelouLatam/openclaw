@@ -183,7 +183,7 @@ export function preparedModelRuntimeConfigsMatch(
     return true;
   }
   try {
-    return hashRuntimeConfigValue(left) === hashRuntimeConfigValue(right);
+    return hashPreparedModelRuntimeValue(left) === hashPreparedModelRuntimeValue(right);
   } catch {
     return false;
   }
@@ -266,11 +266,11 @@ export function normalizePreparedModelRuntimeInput(
 }
 
 function environmentFingerprint(env: NodeJS.ProcessEnv | undefined): string | undefined {
-  return env ? hashRuntimeConfigValue(env) : undefined;
+  return env ? hashPreparedModelRuntimeValue(env) : undefined;
 }
 
 function effectiveEnvironmentFingerprint(input: PreparedModelRuntimeInput): string {
-  return hashRuntimeConfigValue(input.env ?? process.env);
+  return hashPreparedModelRuntimeValue(input.env ?? process.env);
 }
 
 export function ownerKey(input: PreparedModelRuntimeInput): string {
@@ -285,7 +285,7 @@ export function ownerKey(input: PreparedModelRuntimeInput): string {
     env: environmentFingerprint(input.env),
     allowGatewaySubagentBinding: input.allowGatewaySubagentBinding === true,
     runtimePluginSelections: input.runtimePluginSelections,
-    config: input.readOnly ? hashRuntimeConfigValue(input.config) : undefined,
+    config: input.readOnly ? hashPreparedModelRuntimeValue(input.config) : undefined,
   });
 }
 
@@ -295,16 +295,35 @@ type PreparedModelRuntimeReadBatch = WeakMap<
 >;
 
 let activePreparedModelRuntimeReadBatch: PreparedModelRuntimeReadBatch | undefined;
+let activePreparedModelRuntimeReadBatchHashes: WeakMap<object, string> | undefined;
 
 /** Reuse configured candidates only during synchronous reads; never publish or yield here. */
 export function withPreparedModelRuntimeReadBatch<T>(read: () => T): T {
   const parent = activePreparedModelRuntimeReadBatch;
+  const parentHashes = activePreparedModelRuntimeReadBatchHashes;
   activePreparedModelRuntimeReadBatch = new WeakMap();
+  activePreparedModelRuntimeReadBatchHashes = new WeakMap();
   try {
     return read();
   } finally {
     activePreparedModelRuntimeReadBatch = parent;
+    activePreparedModelRuntimeReadBatchHashes = parentHashes;
   }
+}
+
+// A fleet read hashes the same mutable config and environment once per agent. Nothing can
+// replace or edit them inside a synchronous batch, so each object is hashed once per batch.
+function hashPreparedModelRuntimeValue(value: object): string {
+  const hashes = activePreparedModelRuntimeReadBatchHashes;
+  if (!hashes) {
+    return hashRuntimeConfigValue(value as OpenClawConfig);
+  }
+  let hash = hashes.get(value);
+  if (hash === undefined) {
+    hash = hashRuntimeConfigValue(value as OpenClawConfig);
+    hashes.set(value, hash);
+  }
+  return hash;
 }
 
 function configuredOwnerCandidates(
