@@ -10,6 +10,7 @@ import { isPerAgentSessionStoreConfig } from "../../config/sessions/session-stor
 import { resolvePersistedSessionStoreOwner } from "../../config/sessions/session-store-owner.js";
 import { listConfiguredSessionStoreAgentIds } from "../../config/sessions/targets-configured-agents.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { readUserProfileAliasRevision } from "../../state/user-profile-events.js";
 import { captureGatewayAuthPolicy, isGatewayAuthPolicyCurrent } from "../auth-policy.js";
 import { readGatewayAccessRevision } from "../gateway-access-revision.js";
 import { authorizeOperatorScopesForMethod } from "../method-scopes.js";
@@ -22,6 +23,7 @@ import {
   onOperatorRolePolicyChanged,
   resolveGatewayOperatorRoleActor,
 } from "../operator-role-policy.js";
+import { hasActiveAgentRuntimeAuthority } from "./agent-runtime-authority.js";
 import { readGatewayRequestMutationAuthority } from "./session-mutation-guards.js";
 import type { GatewayRequestHandlerOptions } from "./types.js";
 
@@ -68,10 +70,26 @@ export function createApprovalRequestAuthority(options: GatewayRequestHandlerOpt
   const config = getConfig();
   const authPolicy = client?.authPolicy ?? captureGatewayAuthPolicy(config, null);
   const configPolicy = captureApprovalConfigPolicy(config);
-  const accessRevision = readGatewayAccessRevision();
+  // Unrelated session publications advance the Gateway-wide revision; internal
+  // runtimes are fenced by their live run authority and own role assignment instead.
+  const internalRuntime = approvalRuntime === true || runtimeIdentity !== undefined;
+  const readAccessRevision = internalRuntime
+    ? readUserProfileAliasRevision
+    : readGatewayAccessRevision;
+  const accessRevision = readAccessRevision();
+  const assignmentProfileIds = new Set(
+    [actorProfileId, profileId].filter((id): id is string => id !== undefined),
+  );
+  let assignmentRevoked = false;
   let configRevoked = false;
   let closed = false;
   const releaseConfig = onOperatorRolePolicyChanged((change) => {
+    if (change.kind === "assignment") {
+      if (assignmentProfileIds.has(change.profileId)) {
+        assignmentRevoked = true;
+      }
+      return;
+    }
     if (change.kind !== "config" || change.context !== gatewayContext || configRevoked) {
       return;
     }
@@ -113,7 +131,10 @@ export function createApprovalRequestAuthority(options: GatewayRequestHandlerOpt
       options.context.resolveGatewayContext !== resolveGatewayContext ||
       (resolveGatewayContext?.() ?? options.context) !== gatewayContext ||
       configRevoked ||
-      readGatewayAccessRevision() !== accessRevision
+      (internalRuntime && assignmentRevoked) ||
+      (runtimeIdentity !== undefined &&
+        !hasActiveAgentRuntimeAuthority(client ?? null, options.context)) ||
+      readAccessRevision() !== accessRevision
     ) {
       throw new Error("Approval requester authority changed");
     }

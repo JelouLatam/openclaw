@@ -7,6 +7,7 @@ import {
   createPreparedTestApprovalManager,
   createTestApprovalFixture,
 } from "../exec-approval-manager.test-support.js";
+import { bumpGatewayAccessRevision } from "../gateway-access-revision.js";
 import { waitForApprovalRequested } from "./approval-request.test-support.js";
 import { createPluginApprovalHandlers } from "./plugin-approval.js";
 import type { GatewayRequestHandlerOptions } from "./types.js";
@@ -70,6 +71,44 @@ function requestHandler(
     throw new Error("plugin approval request handler is unavailable");
   }
   return handler;
+}
+
+function waitHandler(
+  manager: ExecApprovalManager<PluginApprovalRequestPayload>,
+): NonNullable<ReturnType<typeof createPluginApprovalHandlers>["plugin.approval.waitDecision"]> {
+  const handler = createPluginApprovalHandlers(manager)["plugin.approval.waitDecision"];
+  if (!handler) {
+    throw new Error("plugin approval wait handler is unavailable");
+  }
+  return handler;
+}
+
+function waitOptions(
+  request: GatewayRequestHandlerOptions,
+  id: string,
+  client: GatewayRequestHandlerOptions["client"] = request.client,
+): GatewayRequestHandlerOptions {
+  const params = { id };
+  return {
+    ...request,
+    req: { method: "plugin.approval.waitDecision", params, id: "req-wait" },
+    params,
+    client,
+    respond: vi.fn(),
+  } as unknown as GatewayRequestHandlerOptions;
+}
+
+function startWait(
+  manager: ExecApprovalManager<PluginApprovalRequestPayload>,
+  wait: GatewayRequestHandlerOptions,
+  track: <T>(request: Promise<T>) => Promise<T>,
+) {
+  const awaitDecision = vi.spyOn(manager, "awaitDecision");
+  const waiting = track(Promise.resolve(waitHandler(manager)(wait)));
+  return {
+    waiting,
+    started: vi.waitFor(() => expect(awaitDecision).toHaveBeenCalled()),
+  };
 }
 
 afterEach(() => {
@@ -316,6 +355,110 @@ describe("plugin approval signed agent runtime", () => {
           .get(),
       ).toBeUndefined();
       await manager.resolve(approvalId, "deny");
+      await pending;
+    });
+  });
+
+  for (const verdict of ["allow-once", "deny"] as const) {
+    it(`returns a ${verdict} decision across an unrelated Gateway access change during the wait`, async (testContext) => {
+      const fixture = await createPreparedTestApprovalManager<PluginApprovalRequestPayload>(
+        testContext,
+        { approvalKind: "plugin", validateAgentRuntimeDelegatedAuthority: () => true },
+      );
+      const { manager } = fixture;
+      await fixture.run(async () => {
+        const opts = requestOptions({
+          request: { title: "Sensitive action", description: "D", twoPhase: true },
+          identity: { ...identityWithoutExecution(), approvalOwnerPluginId: "codex" },
+        });
+        const { pending } = await waitForApprovalRequested(
+          opts.context,
+          "plugin.approval.requested",
+          () => fixture.track(Promise.resolve(requestHandler(manager)(opts))),
+        );
+        const id = (await manager.listPendingRecords())[0]!.id;
+        const wait = waitOptions(opts, id);
+        const { waiting, started } = startWait(manager, wait, fixture.track);
+        await started;
+
+        bumpGatewayAccessRevision();
+        await manager.resolve(id, verdict);
+
+        await expect(waiting).resolves.toBeUndefined();
+        expect(vi.mocked(wait.respond).mock.calls[0]?.slice(0, 2)).toEqual([
+          true,
+          expect.objectContaining({ id, decision: verdict }),
+        ]);
+        await pending;
+      });
+    });
+  }
+
+  it("fails the wait when the runtime's own authority closes", async (testContext) => {
+    let active = true;
+    const fixture = await createPreparedTestApprovalManager<PluginApprovalRequestPayload>(
+      testContext,
+      { approvalKind: "plugin", validateAgentRuntimeDelegatedAuthority: () => true },
+    );
+    const { manager } = fixture;
+    await fixture.run(async () => {
+      const opts = requestOptions({
+        request: { title: "Sensitive action", description: "D", twoPhase: true },
+        identity: { ...identityWithoutExecution(), approvalOwnerPluginId: "codex" },
+        validateAuthority: () => active,
+      });
+      const { pending } = await waitForApprovalRequested(
+        opts.context,
+        "plugin.approval.requested",
+        () => fixture.track(Promise.resolve(requestHandler(manager)(opts))),
+      );
+      const id = (await manager.listPendingRecords())[0]!.id;
+      const wait = waitOptions(opts, id);
+      const { waiting, started } = startWait(manager, wait, fixture.track);
+      await started;
+
+      active = false;
+      await manager.resolve(id, "allow-once");
+
+      await expect(waiting).rejects.toThrow("Approval requester authority changed");
+      expect(wait.respond).not.toHaveBeenCalled();
+      await pending;
+    });
+  });
+
+  it("still fails a user connection's wait when the Gateway access revision changes", async (testContext) => {
+    const fixture = await createPreparedTestApprovalManager<PluginApprovalRequestPayload>(
+      testContext,
+      { approvalKind: "plugin", validateAgentRuntimeDelegatedAuthority: () => true },
+    );
+    const { manager } = fixture;
+    await fixture.run(async () => {
+      const opts = requestOptions({
+        request: { title: "Sensitive action", description: "D", twoPhase: true },
+        identity: { ...identityWithoutExecution(), approvalOwnerPluginId: "codex" },
+      });
+      const { pending } = await waitForApprovalRequested(
+        opts.context,
+        "plugin.approval.requested",
+        () => fixture.track(Promise.resolve(requestHandler(manager)(opts))),
+      );
+      const id = (await manager.listPendingRecords())[0]!.id;
+      const wait = waitOptions(opts, id, {
+        connId: "conn-operator",
+        connect: {
+          client: { id: "control-ui", displayName: "Control UI" },
+          role: "operator",
+          scopes: ["operator.admin"],
+        },
+      } as GatewayRequestHandlerOptions["client"]);
+      const { waiting, started } = startWait(manager, wait, fixture.track);
+      await started;
+
+      bumpGatewayAccessRevision();
+      await manager.resolve(id, "allow-once");
+
+      await expect(waiting).rejects.toThrow("Approval requester authority changed");
+      expect(wait.respond).not.toHaveBeenCalled();
       await pending;
     });
   });
