@@ -5,6 +5,8 @@ const REQUESTER_PROFILE = Symbol("openclaw.requesterProfile");
 export type PreparedRequesterProfile = Readonly<{
   id: string;
   displayName: string | null;
+  /** Authenticated ingress identity; never projected into the model prompt. */
+  authenticatedUserId?: string;
   isCurrent: () => boolean;
 }>;
 

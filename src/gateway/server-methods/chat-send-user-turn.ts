@@ -263,6 +263,7 @@ export function prepareChatSendUserTurn(params: {
     bindRequesterProfile(ctx, {
       id: profileId,
       displayName,
+      authenticatedUserId,
       isCurrent: () => {
         try {
           admission.assertWorkAdmissionCurrent?.();

@@ -223,12 +223,15 @@ export type PluginHookRegistrationOptions<K extends PluginHookName> = {
   priority?: number;
   registrationId?: string;
   timeoutMs?: number;
-} & (K extends "before_agent_reply"
-  ? {
-      /** Host-enforced turn triggers that may invoke this reply hook. */
-      eligibleTriggers?: readonly [PluginHookAgentTrigger, ...PluginHookAgentTrigger[]];
-    }
-  : { eligibleTriggers?: never }) &
+} & (K extends "before_dispatch"
+  ? { failurePolicy?: "fail-closed"; failureText?: string }
+  : { failurePolicy?: never; failureText?: never }) &
+  (K extends "before_agent_reply"
+    ? {
+        /** Host-enforced turn triggers that may invoke this reply hook. */
+        eligibleTriggers?: readonly [PluginHookAgentTrigger, ...PluginHookAgentTrigger[]];
+      }
+    : { eligibleTriggers?: never }) &
   (K extends "reply_dispatch"
     ? {
         /** Host-enforced dispatch paths that may invoke this hook; unknown paths remain eligible. */
@@ -472,6 +475,10 @@ export type PluginHookBeforeDispatchEvent = {
   channel?: string;
   sessionKey?: string;
   senderId?: string;
+  senderE164?: string;
+  /** Live host-verified web requester; absent for synthetic/system inputs. */
+  authenticatedUserId?: string;
+  requesterProfileId?: string;
   replyToId?: string;
   replyToIdFull?: string;
   replyToBody?: string;
@@ -488,6 +495,10 @@ export type PluginHookBeforeDispatchContext = {
   conversationId?: string;
   sessionKey?: string;
   senderId?: string;
+  senderE164?: string;
+  /** Live host-verified web requester; absent for synthetic/system inputs. */
+  authenticatedUserId?: string;
+  requesterProfileId?: string;
   replyToId?: string;
   replyToIdFull?: string;
   replyToBody?: string;
@@ -1100,6 +1111,8 @@ export type PluginHookRegistration<K extends PluginHookName = PluginHookName> = 
   matcher?: PluginToolMatcher;
   priority?: number;
   timeoutMs?: number;
+  failurePolicy?: "fail-closed";
+  failureText?: string;
   eligibleTriggers?: readonly PluginHookAgentTrigger[];
   eligibleDispatchKinds?: readonly PluginHookReplyDispatchKind[];
   requiresToolAuthority?: true;

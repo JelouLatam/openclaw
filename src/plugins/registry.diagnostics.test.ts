@@ -39,6 +39,26 @@ function createDiagnosticFixture() {
 }
 
 describe("plugin registration diagnostics", () => {
+  it("retains fail-closed inbound gate policy through the public registration API", () => {
+    const { builder, createRecord } = createDiagnosticFixture();
+    const record = createRecord("gate");
+    record.origin = "bundled";
+    const api = builder.createApi(record, { config: {} });
+    api.on("before_dispatch", () => ({ handled: false }), {
+      failurePolicy: "fail-closed",
+      failureText: "Try again.",
+      timeoutMs: 50,
+    });
+    expect(builder.registry.typedHooks).toEqual([
+      expect.objectContaining({
+        hookName: "before_dispatch",
+        failurePolicy: "fail-closed",
+        failureText: "Try again.",
+        timeoutMs: 50,
+      }),
+    ]);
+  });
+
   it("preserves ordered severity and call-time provenance across registrars and rollback", () => {
     const { builder, createRecord } = createDiagnosticFixture();
     const alpha = createRecord("alpha");

@@ -17,6 +17,7 @@ import {
   updateSessionEntry,
 } from "../../config/sessions/session-accessor.js";
 import { logMessageProcessed } from "../../logging/diagnostic.js";
+import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { prepareSessionParticipantInput } from "../../sessions/session-participant-input.js";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { createTestUserTurnTranscriptTarget } from "../../sessions/user-turn-transcript.test-support.js";
@@ -219,6 +220,15 @@ describe("finalizeAcceptedChatSendMessageInjection", () => {
 });
 
 describe("createChatSendMessageInjectionStarter admission fence", () => {
+  it("routes steering through reply dispatch when an inbound gate is installed", () => {
+    vi.mocked(getGlobalHookRunner).mockReturnValueOnce({
+      hasHooks: (hook: string) => hook === "before_dispatch",
+    } as ReturnType<typeof getGlobalHookRunner>);
+    const begin = createChatSendMessageInjectionStarter(makeStarterParams());
+    expect(begin()).toBeUndefined();
+    expect(beginReplyMessageInjectionTarget).not.toHaveBeenCalled();
+  });
+
   it("rejects the injection before queueing when the latest persisted entry fail-closes terminal delivery", () => {
     // A terminal receipt committed after prepareChatSendSession captured its
     // dispatch snapshot. The fence must revalidate at the injection-start

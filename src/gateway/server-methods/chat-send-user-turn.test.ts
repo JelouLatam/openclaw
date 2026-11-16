@@ -16,6 +16,7 @@ import { resolveReplyDirectiveRouting } from "../../auto-reply/reply/get-reply-d
 import { finalizeInboundContext } from "../../auto-reply/reply/inbound-context.js";
 import { buildInboundUserContextPrefix } from "../../auto-reply/reply/inbound-meta.js";
 import { resolveSessionResetCommand } from "../../auto-reply/reply/session-reset-command.js";
+import { getRequesterProfile } from "../../auto-reply/requester-profile.js";
 import type { MsgContext } from "../../auto-reply/templating.js";
 import { resolveStateDir } from "../../config/paths.js";
 import {
@@ -106,6 +107,10 @@ describe("prepareChatSendUserTurn", () => {
       ).toMatchObject({ senderIsOwner: allowed, isAuthorizedSender: allowed });
       const ctx = finalizeInboundContext({ ...prepared.ctx });
       const prompt = buildInboundUserContextPrefix(ctx);
+      expect(getRequesterProfile(ctx)?.authenticatedUserId).toBe(
+        verified && !synthetic ? "ada@example.test" : undefined,
+      );
+      expect(prompt).not.toContain("ada@example.test");
       if (verified && !synthetic) {
         expect(requesterProfile(prompt)).toEqual({ id: profileId, display_name: "Ada" });
       } else {

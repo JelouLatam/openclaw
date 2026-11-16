@@ -424,6 +424,9 @@ export function createToolHookRegistrars(state: PluginRegistryState) {
       ...(matcher ? { matcher } : {}),
       priority: opts?.priority,
       ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+      ...(hookName === "before_dispatch" && opts?.failurePolicy === "fail-closed"
+        ? { failurePolicy: "fail-closed" as const, failureText: opts.failureText }
+        : {}),
       ...(eligibleTriggers ? { eligibleTriggers } : {}),
       ...(eligibleDispatchKinds ? { eligibleDispatchKinds } : {}),
       ...(hookName === "before_prompt_build" && opts?.requiresToolAuthority === true

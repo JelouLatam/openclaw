@@ -174,6 +174,55 @@ transcript, and compaction boundaries also differ. See
 [Codex hook boundaries](/plugins/codex-harness-runtime#hook-boundaries) and
 [Agent harness plugins](/plugins/sdk-agent-harness).
 
+### Inbound dispatch and authenticated web requesters
+
+`before_dispatch` receives `{ content, body?, channel?, sessionKey?, senderId?, senderE164?,
+isGroup?, messageId?, timestamp?, replyTo* }`. Its context supplies `channelId`,
+`accountId`, `conversationId`, `sessionKey`, `senderId`, `senderE164`, `messageId`, and reply
+metadata. Return `{ handled: true, text: "Fixed reply" }` to finish through the
+normal reply dispatcher without calling a model; omit `text` for silence.
+Handlers run by priority and the first claim wins. Delivery still respects send
+policy and aborts.
+
+For a live, verified browser requester, both event and context additionally
+supply `authenticatedUserId` (the authenticated login, an email with an email
+trusted proxy) and `requesterProfileId` (the durable profile ID). These facts come
+from the host-owned requester binding, not message text, request parameters, or
+sender labels. They are absent for synthetic/system inputs or an expired binding.
+The login is not added to model context. Other authentication providers need not
+use an email login. Do not infer a verified requester from `senderId` alone.
+
+Direct `chat.send` steering bypasses reply dispatch. When a `before_dispatch`
+handler is installed, it therefore falls back to ordinary follow-up dispatch so
+the handler can inspect the input before it reaches a model. Browser-queued
+follow-ups go through the same `chat.send` path when submitted. This does not
+cancel an already-running turn or cover other input/command entry points.
+
+Human inbound turns run this gate even with restrictive admitted session settings;
+other takeover hooks retain their restrictions. Heartbeats skip inbound handlers. It is also marked
+unsafe for restart-recoverable chat admission. Do not register
+`before_message_write` as a substitute. `before_dispatch` has no default timeout
+and errors fail open in the global runner. For a fail-closed classifier, use a
+bounded internal deadline and catch errors into an explicit handled refusal;
+a registration timeout alone does not provide fail-closed behavior.
+
+Opt into host-enforced failure handling with
+`api.on("before_dispatch", handler, { failurePolicy: "fail-closed", timeoutMs: 3000 })`.
+For this registration, a throw or deadline returns a generic fixed refusal and stops
+later handlers/model dispatch. The default deadline is 3000 ms when omitted;
+other registrations preserve their existing fail-open behavior. Set `failureText`
+to a fixed localized refusal; omitted/blank text uses the generic English message. A handler's normal
+`{ handled: true, text }` is unchanged. Timed-out promises are not forcibly cancelled:
+keep classifiers read-only and cancel their own network work.
+
+`isGroup` means a group/channel conversation, not public visibility. Slack
+private channels also set it; use Slack's conversation metadata to distinguish
+public from private. Web chat uses a direct chat type even for shared sessions:
+read the session's authorized sharing metadata instead of treating `!isGroup`
+as private. WhatsApp sender IDs can be JIDs; E.164 is a separate channel identity
+fact, exposed as `senderE164` when available, and must not be assumed from an
+arbitrary `senderId`.
+
 ## Troubleshooting
 
 | Symptom                                    | Check                                                                                                                                                                                                                                                          |

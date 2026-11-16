@@ -8,6 +8,7 @@ import type { WorkerSessionPlacementRecord } from "../../gateway/worker-environm
 import type { SessionBindingRecord } from "../../infra/outbound/session-binding-service.js";
 import type { PluginSubagentRequesterContext } from "../../plugins/runtime/subagent-requester-context.js";
 import { setReplyPayloadMetadata } from "../reply-payload.js";
+import { bindRequesterProfile } from "../requester-profile.js";
 import type { MsgContext } from "../templating.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import {
@@ -61,6 +62,34 @@ beforeAll(globalBeforeAll0);
 describe("before_dispatch hook", () => {
   beforeEach(describe1BeforeEach0);
 
+  it.each([true, false])("exposes only a current host-bound web requester: %s", async (current) => {
+    const ctx = { ...createHookCtx(), Provider: "webchat", Surface: "webchat" };
+    bindRequesterProfile(ctx, {
+      id: "profile-ada",
+      displayName: "Ada",
+      authenticatedUserId: "ada@example.test",
+      isCurrent: () => current,
+    });
+    hookMocks.runner.runBeforeDispatch.mockResolvedValue({ handled: true, text: "Blocked" });
+    const dispatcher = createDispatcher();
+    const replyResolver = vi.fn();
+    await dispatchReplyFromConfig({ ctx, cfg: emptyConfig, dispatcher, replyResolver });
+    const [event, context] = hookMocks.runner.runBeforeDispatch.mock.calls[0]!;
+    for (const value of [event, context]) {
+      if (current) {
+        expect(value).toMatchObject({
+          authenticatedUserId: "ada@example.test",
+          requesterProfileId: "profile-ada",
+        });
+      } else {
+        expect(value).not.toHaveProperty("authenticatedUserId");
+        expect(value).not.toHaveProperty("requesterProfileId");
+      }
+    }
+    expect(replyResolver).not.toHaveBeenCalled();
+    expect(dispatcher.sendFinalReply).toHaveBeenCalledWith({ text: "Blocked" });
+  });
+
   it("skips model dispatch when hook returns handled", async () => {
     hookMocks.runner.runBeforeDispatch.mockResolvedValue({ handled: true, text: "Blocked" });
     const dispatcher = createDispatcher();
@@ -73,7 +102,7 @@ describe("before_dispatch hook", () => {
     expect(result.queuedFinal).toBe(true);
   });
 
-  it("skips claiming hooks when admitted session settings are restrictive", async () => {
+  it("runs the inbound gate even when admitted session settings are restrictive", async () => {
     hookMocks.runner.runBeforeDispatch.mockResolvedValue({ handled: true, text: "unsafe" });
     const dispatcher = createDispatcher();
     const replyResolver = vi.fn(async () => ({ text: "embedded reply" }));
@@ -91,9 +120,9 @@ describe("before_dispatch hook", () => {
       },
     });
 
-    expect(hookMocks.runner.runBeforeDispatch).not.toHaveBeenCalled();
-    expect(replyResolver).toHaveBeenCalledOnce();
-    expect(dispatcher.sendFinalReply).toHaveBeenCalledWith({ text: "embedded reply" });
+    expect(hookMocks.runner.runBeforeDispatch).toHaveBeenCalledOnce();
+    expect(replyResolver).not.toHaveBeenCalled();
+    expect(dispatcher.sendFinalReply).toHaveBeenCalledWith({ text: "unsafe" });
     expect(result.queuedFinal).toBe(true);
   });
 
@@ -239,9 +268,14 @@ describe("before_dispatch hook", () => {
       ReplyToBody: "the quoted parent message",
       ReplyToSender: "Ada",
       ReplyToIsQuote: true,
+      SenderE164: "+15550001111",
     });
 
     await dispatchReplyFromConfig({ ctx, cfg: emptyConfig, dispatcher });
+
+    for (const value of hookMocks.runner.runBeforeDispatch.mock.calls[0]!.slice(0, 2)) {
+      expect(value).toMatchObject({ senderE164: "+15550001111" });
+    }
 
     const beforeDispatchCall = firstMockCall(
       hookMocks.runner.runBeforeDispatch,
