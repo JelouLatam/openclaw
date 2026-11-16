@@ -813,6 +813,7 @@ export function createHookRunner(
     event: HookEvent<K>,
     ctx: HookContext<K> & ClaimingHookAdmission,
     runHandler?: (run: () => Promise<TResult | void>) => Promise<TResult | void>,
+    onFailClosed?: (hook: PluginHookRegistration<K>) => TResult,
   ): Promise<TResult | undefined> {
     const hooks = getHooksForName(registry, hookName, ctx);
     if (hooks.length === 0) {
@@ -821,7 +822,14 @@ export function createHookRunner(
 
     logger?.debug?.(`[hooks] running ${hookName} (${hooks.length} handlers, first-claim wins)`);
 
-    const outcome = await runClaimingHooksList(hooks, hookName, event, ctx, runHandler);
+    const outcome = await runClaimingHooksList(
+      hooks,
+      hookName,
+      event,
+      ctx,
+      runHandler,
+      onFailClosed,
+    );
     return outcome.status === "handled" ? outcome.result : undefined;
   }
 
@@ -834,6 +842,7 @@ export function createHookRunner(
     event: HookEvent<K>,
     ctx: HookContext<K> & ClaimingHookAdmission,
     runHandler?: (run: () => Promise<TResult | void>) => Promise<TResult | void>,
+    onFailClosed?: (hook: PluginHookRegistration<K>) => TResult,
   ): Promise<
     | { status: "handled"; result: TResult }
     | { status: "declined" }
@@ -851,13 +860,28 @@ export function createHookRunner(
           const promise = Promise.resolve(
             (hook.handler as (event: unknown, ctx: unknown) => Promise<TResult | void>)(event, ctx),
           );
-          return await awaitHook(hook, promise);
+          return await awaitHook(
+            hook,
+            promise,
+            hookName === "before_dispatch" && hook.failurePolicy === "fail-closed"
+              ? 3_000
+              : undefined,
+          );
         };
         const handlerResult = runHandler ? await runHandler(invokeHandler) : await invokeHandler();
         if (handlerResult?.handled) {
           return { status: "handled", result: handlerResult };
         }
       } catch (err) {
+        if (
+          hookName === "before_dispatch" &&
+          hook.failurePolicy === "fail-closed" &&
+          onFailClosed
+        ) {
+          await assertCurrent?.();
+          logger?.error(`[hooks] before_dispatch gate from ${hook.pluginId} failed closed`);
+          return { status: "handled", result: onFailClosed(hook) };
+        }
         firstError ??= sanitizeHookError(err);
         handleHookError({ hookName, pluginId: hook.pluginId, error: err });
       }
@@ -1030,6 +1054,10 @@ export function createHookRunner(
       event,
       ctx,
       runHandler,
+      (hook) => ({
+        handled: true,
+        text: hook.failureText?.trim() || "Unable to verify this message. Please try again.",
+      }),
     );
   }
 

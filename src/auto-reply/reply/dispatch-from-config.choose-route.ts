@@ -30,7 +30,6 @@ import {
   DispatchReplyOperationAbortedError,
   runWithDispatchAbortSignal,
 } from "./dispatch-from-config.abort.js";
-import { admittedSessionSettingsRestrictRuntime } from "./dispatch-from-config.events.js";
 import {
   hasExecApprovalPayload,
   requiresDurableToolResultDelivery,
@@ -562,11 +561,7 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
   };
 
   // Run before_dispatch hook — let plugins inspect or handle before model dispatch.
-  if (
-    state.allowInboundHandlers &&
-    !admittedSessionSettingsRestrictRuntime(params.replyOptions?.admittedSessionSettings) &&
-    hookRunner?.hasHooks("before_dispatch")
-  ) {
+  if (state.allowInboundHandlers && hookRunner?.hasHooks("before_dispatch")) {
     // This outer lookup key is resolved from the routed context; fields inside
     // sessionStoreEntry.entry cannot redirect hook or requester lineage.
     const beforeDispatchSessionKey = sessionStoreEntry.sessionKey ?? sessionKey;

@@ -14,6 +14,8 @@ export function createMockPluginRegistry(
     priority?: number;
     registrationId?: string;
     timeoutMs?: number;
+    failurePolicy?: "fail-closed";
+    failureText?: string;
     eligibleTriggers?: readonly PluginHookAgentTrigger[];
     requiresToolAuthority?: true;
   }>,
@@ -41,6 +43,7 @@ export function createMockPluginRegistry(
       priority: h.priority ?? 0,
       ...(h.registrationId ? { registrationId: h.registrationId } : {}),
       ...(h.timeoutMs !== undefined ? { timeoutMs: h.timeoutMs } : {}),
+      ...(h.failurePolicy ? { failurePolicy: h.failurePolicy, failureText: h.failureText } : {}),
       ...(h.eligibleTriggers !== undefined ? { eligibleTriggers: h.eligibleTriggers } : {}),
       ...(h.requiresToolAuthority ? { requiresToolAuthority: true } : {}),
       source: "test",

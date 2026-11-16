@@ -223,12 +223,15 @@ export type PluginHookRegistrationOptions<K extends PluginHookName> = {
   priority?: number;
   registrationId?: string;
   timeoutMs?: number;
-} & (K extends "before_agent_reply"
-  ? {
-      /** Host-enforced turn triggers that may invoke this reply hook. */
-      eligibleTriggers?: readonly [PluginHookAgentTrigger, ...PluginHookAgentTrigger[]];
-    }
-  : { eligibleTriggers?: never }) &
+} & (K extends "before_dispatch"
+  ? { failurePolicy?: "fail-closed"; failureText?: string }
+  : { failurePolicy?: never; failureText?: never }) &
+  (K extends "before_agent_reply"
+    ? {
+        /** Host-enforced turn triggers that may invoke this reply hook. */
+        eligibleTriggers?: readonly [PluginHookAgentTrigger, ...PluginHookAgentTrigger[]];
+      }
+    : { eligibleTriggers?: never }) &
   (K extends "reply_dispatch"
     ? {
         /** Host-enforced dispatch paths that may invoke this hook; unknown paths remain eligible. */
@@ -1108,6 +1111,8 @@ export type PluginHookRegistration<K extends PluginHookName = PluginHookName> = 
   matcher?: PluginToolMatcher;
   priority?: number;
   timeoutMs?: number;
+  failurePolicy?: "fail-closed";
+  failureText?: string;
   eligibleTriggers?: readonly PluginHookAgentTrigger[];
   eligibleDispatchKinds?: readonly PluginHookReplyDispatchKind[];
   requiresToolAuthority?: true;

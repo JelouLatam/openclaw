@@ -198,13 +198,22 @@ the handler can inspect the input before it reaches a model. Browser-queued
 follow-ups go through the same `chat.send` path when submitted. This does not
 cancel an already-running turn or cover other input/command entry points.
 
-This is a claiming hook, not a universal security boundary: heartbeats and
-restrictive admitted session settings skip inbound handlers. It is also marked
+Human inbound turns run this gate even with restrictive admitted session settings;
+other takeover hooks retain their restrictions. Heartbeats skip inbound handlers. It is also marked
 unsafe for restart-recoverable chat admission. Do not register
 `before_message_write` as a substitute. `before_dispatch` has no default timeout
 and errors fail open in the global runner. For a fail-closed classifier, use a
 bounded internal deadline and catch errors into an explicit handled refusal;
 a registration timeout alone does not provide fail-closed behavior.
+
+Opt into host-enforced failure handling with
+`api.on("before_dispatch", handler, { failurePolicy: "fail-closed", timeoutMs: 3000 })`.
+For this registration, a throw or deadline returns a generic fixed refusal and stops
+later handlers/model dispatch. The default deadline is 3000 ms when omitted;
+other registrations preserve their existing fail-open behavior. Set `failureText`
+to a fixed localized refusal; omitted/blank text uses the generic English message. A handler's normal
+`{ handled: true, text }` is unchanged. Timed-out promises are not forcibly cancelled:
+keep classifiers read-only and cancel their own network work.
 
 `isGroup` means a group/channel conversation, not public visibility. Slack
 private channels also set it; use Slack's conversation metadata to distinguish

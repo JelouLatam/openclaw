@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import { createHookRunner } from "./hooks.js";
 import { createMockPluginRegistry } from "./hooks.test-fixtures.js";
@@ -69,4 +69,88 @@ describe("before_dispatch requester authority", () => {
     await expect(run).resolves.toBeUndefined();
     expect(getActiveRequester()).toBeUndefined();
   });
+});
+
+describe("before_dispatch fail-closed admission", () => {
+  it("stops at an opted-in throwing gate and returns a generic fixed reply", async () => {
+    const later = vi.fn();
+    const registry = createMockPluginRegistry([
+      {
+        hookName: "before_dispatch",
+        pluginId: "gate",
+        priority: 10,
+        failurePolicy: "fail-closed",
+        handler: () => {
+          throw new Error("private failure");
+        },
+      },
+      { hookName: "before_dispatch", pluginId: "later", handler: later },
+    ]);
+    await expect(
+      createHookRunner(registry).runBeforeDispatch({ content: "hello" }, {}),
+    ).resolves.toEqual({ handled: true, text: "Unable to verify this message. Please try again." });
+    expect(later).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, 25])(
+    "fails closed on its default or configured deadline: %s",
+    async (timeoutMs) => {
+      vi.useFakeTimers();
+      try {
+        const registry = createMockPluginRegistry([
+          {
+            hookName: "before_dispatch",
+            pluginId: "gate",
+            failurePolicy: "fail-closed",
+            timeoutMs,
+            handler: () => new Promise(() => {}),
+          },
+        ]);
+        const run = createHookRunner(registry).runBeforeDispatch({ content: "hello" }, {});
+        await vi.advanceTimersByTimeAsync(timeoutMs ?? 3_000);
+        await expect(run).resolves.toMatchObject({ handled: true });
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("preserves existing fail-open behavior and normal handled text", async () => {
+    const registry = createMockPluginRegistry([
+      {
+        hookName: "before_dispatch",
+        pluginId: "legacy",
+        priority: 10,
+        handler: () => {
+          throw new Error("legacy");
+        },
+      },
+      {
+        hookName: "before_dispatch",
+        pluginId: "gate",
+        failurePolicy: "fail-closed",
+        handler: () => ({ handled: true, text: "Custom refusal" }),
+      },
+    ]);
+    await expect(
+      createHookRunner(registry).runBeforeDispatch({ content: "hello" }, {}),
+    ).resolves.toEqual({ handled: true, text: "Custom refusal" });
+  });
+});
+
+it("uses the plugin's fixed localized failure text", async () => {
+  const registry = createMockPluginRegistry([
+    {
+      hookName: "before_dispatch",
+      pluginId: "gate",
+      failurePolicy: "fail-closed",
+      failureText: "No pude verificar el mensaje. Intenta de nuevo.",
+      handler: () => {
+        throw new Error("failed");
+      },
+    },
+  ]);
+  await expect(
+    createHookRunner(registry).runBeforeDispatch({ content: "hello" }, {}),
+  ).resolves.toEqual({ handled: true, text: "No pude verificar el mensaje. Intenta de nuevo." });
 });

@@ -76,8 +76,15 @@ describe("before_dispatch hook", () => {
     await dispatchReplyFromConfig({ ctx, cfg: emptyConfig, dispatcher, replyResolver });
     const [event, context] = hookMocks.runner.runBeforeDispatch.mock.calls[0]!;
     for (const value of [event, context]) {
-      expect(value.authenticatedUserId).toBe(current ? "ada@example.test" : undefined);
-      expect(value.requesterProfileId).toBe(current ? "profile-ada" : undefined);
+      if (current) {
+        expect(value).toMatchObject({
+          authenticatedUserId: "ada@example.test",
+          requesterProfileId: "profile-ada",
+        });
+      } else {
+        expect(value).not.toHaveProperty("authenticatedUserId");
+        expect(value).not.toHaveProperty("requesterProfileId");
+      }
     }
     expect(replyResolver).not.toHaveBeenCalled();
     expect(dispatcher.sendFinalReply).toHaveBeenCalledWith({ text: "Blocked" });
@@ -95,7 +102,7 @@ describe("before_dispatch hook", () => {
     expect(result.queuedFinal).toBe(true);
   });
 
-  it("skips claiming hooks when admitted session settings are restrictive", async () => {
+  it("runs the inbound gate even when admitted session settings are restrictive", async () => {
     hookMocks.runner.runBeforeDispatch.mockResolvedValue({ handled: true, text: "unsafe" });
     const dispatcher = createDispatcher();
     const replyResolver = vi.fn(async () => ({ text: "embedded reply" }));
@@ -113,9 +120,9 @@ describe("before_dispatch hook", () => {
       },
     });
 
-    expect(hookMocks.runner.runBeforeDispatch).not.toHaveBeenCalled();
-    expect(replyResolver).toHaveBeenCalledOnce();
-    expect(dispatcher.sendFinalReply).toHaveBeenCalledWith({ text: "embedded reply" });
+    expect(hookMocks.runner.runBeforeDispatch).toHaveBeenCalledOnce();
+    expect(replyResolver).not.toHaveBeenCalled();
+    expect(dispatcher.sendFinalReply).toHaveBeenCalledWith({ text: "unsafe" });
     expect(result.queuedFinal).toBe(true);
   });
 
