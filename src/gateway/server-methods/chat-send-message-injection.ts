@@ -75,6 +75,11 @@ export function createChatSendMessageInjectionStarter(params: {
         }
       : undefined;
   return (): ReplyMessageInjectionAttempt | undefined => {
+    // Direct injection skips reply dispatch. Route through its admission hooks
+    // instead when a plugin must inspect the input before any model sees it.
+    if (getGlobalHookRunner()?.hasHooks("before_dispatch")) {
+      return undefined;
+    }
     if (!params.target || isInternalTextSlashCommandTurn) {
       return undefined;
     }

@@ -8,6 +8,7 @@ import type { WorkerSessionPlacementRecord } from "../../gateway/worker-environm
 import type { SessionBindingRecord } from "../../infra/outbound/session-binding-service.js";
 import type { PluginSubagentRequesterContext } from "../../plugins/runtime/subagent-requester-context.js";
 import { setReplyPayloadMetadata } from "../reply-payload.js";
+import { bindRequesterProfile } from "../requester-profile.js";
 import type { MsgContext } from "../templating.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import {
@@ -60,6 +61,27 @@ beforeAll(globalBeforeAll0);
 
 describe("before_dispatch hook", () => {
   beforeEach(describe1BeforeEach0);
+
+  it.each([true, false])("exposes only a current host-bound web requester: %s", async (current) => {
+    const ctx = { ...createHookCtx(), Provider: "webchat", Surface: "webchat" };
+    bindRequesterProfile(ctx, {
+      id: "profile-ada",
+      displayName: "Ada",
+      authenticatedUserId: "ada@example.test",
+      isCurrent: () => current,
+    });
+    hookMocks.runner.runBeforeDispatch.mockResolvedValue({ handled: true, text: "Blocked" });
+    const dispatcher = createDispatcher();
+    const replyResolver = vi.fn();
+    await dispatchReplyFromConfig({ ctx, cfg: emptyConfig, dispatcher, replyResolver });
+    const [event, context] = hookMocks.runner.runBeforeDispatch.mock.calls[0]!;
+    for (const value of [event, context]) {
+      expect(value.authenticatedUserId).toBe(current ? "ada@example.test" : undefined);
+      expect(value.requesterProfileId).toBe(current ? "profile-ada" : undefined);
+    }
+    expect(replyResolver).not.toHaveBeenCalled();
+    expect(dispatcher.sendFinalReply).toHaveBeenCalledWith({ text: "Blocked" });
+  });
 
   it("skips model dispatch when hook returns handled", async () => {
     hookMocks.runner.runBeforeDispatch.mockResolvedValue({ handled: true, text: "Blocked" });
@@ -239,9 +261,14 @@ describe("before_dispatch hook", () => {
       ReplyToBody: "the quoted parent message",
       ReplyToSender: "Ada",
       ReplyToIsQuote: true,
+      SenderE164: "+15550001111",
     });
 
     await dispatchReplyFromConfig({ ctx, cfg: emptyConfig, dispatcher });
+
+    for (const value of hookMocks.runner.runBeforeDispatch.mock.calls[0]!.slice(0, 2)) {
+      expect(value).toMatchObject({ senderE164: "+15550001111" });
+    }
 
     const beforeDispatchCall = firstMockCall(
       hookMocks.runner.runBeforeDispatch,

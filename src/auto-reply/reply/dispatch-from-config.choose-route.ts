@@ -22,6 +22,7 @@ import {
   setReplyPayloadMetadata,
   type ReplyPayload,
 } from "../reply-payload.js";
+import { getRequesterProfile } from "../requester-profile.js";
 import { renderPostCompactionModelFailurePayload } from "./agent-runner-failure-reply.js";
 import { recoverBlockReplySources, setBlockReplyDelivery } from "./block-reply-delivery.js";
 import { createBlockReplyContentKey } from "./block-reply-pipeline.js";
@@ -578,6 +579,10 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
         threadId: routeReplyThreadId,
       },
     });
+    const requester = getRequesterProfile(ctx);
+    const requesterIdentity = requester
+      ? { authenticatedUserId: requester.authenticatedUserId, requesterProfileId: requester.id }
+      : {};
     const beforeDispatchResult = await traceReplyPhase("reply.before_dispatch_hooks", () =>
       runWithDispatchLifecycleAdmission(async () => {
         return await runWithDispatchAbortSignal(
@@ -591,6 +596,8 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
                 channel: state.hookState.hookContext.channelId,
                 sessionKey: beforeDispatchSessionKey,
                 senderId: state.hookState.hookContext.senderId,
+                senderE164: state.hookState.hookContext.senderE164,
+                ...requesterIdentity,
                 replyToId: state.hookState.hookContext.replyToId,
                 replyToIdFull: state.hookState.hookContext.replyToIdFull,
                 replyToBody: state.hookState.hookContext.replyToBody,
@@ -607,6 +614,8 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
                   conversationId: state.hookState.inboundClaimContext.conversationId,
                   sessionKey: beforeDispatchSessionKey,
                   senderId: state.hookState.hookContext.senderId,
+                  senderE164: state.hookState.hookContext.senderE164,
+                  ...requesterIdentity,
                   replyToId: state.hookState.hookContext.replyToId,
                   replyToIdFull: state.hookState.hookContext.replyToIdFull,
                   replyToBody: state.hookState.hookContext.replyToBody,

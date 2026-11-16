@@ -472,6 +472,10 @@ export type PluginHookBeforeDispatchEvent = {
   channel?: string;
   sessionKey?: string;
   senderId?: string;
+  senderE164?: string;
+  /** Live host-verified web requester; absent for synthetic/system inputs. */
+  authenticatedUserId?: string;
+  requesterProfileId?: string;
   replyToId?: string;
   replyToIdFull?: string;
   replyToBody?: string;
@@ -488,6 +492,10 @@ export type PluginHookBeforeDispatchContext = {
   conversationId?: string;
   sessionKey?: string;
   senderId?: string;
+  senderE164?: string;
+  /** Live host-verified web requester; absent for synthetic/system inputs. */
+  authenticatedUserId?: string;
+  requesterProfileId?: string;
   replyToId?: string;
   replyToIdFull?: string;
   replyToBody?: string;
